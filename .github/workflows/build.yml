@@ -9,22 +9,13 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: 18
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Windows executable
-        run: npm run make
-
-      - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v3
+      - run: npm install
+      - run: npm run make
+      - uses: actions/upload-artifact@v3
         with:
           name: windows-build
           path: out/
@@ -32,22 +23,13 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: 18
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build Linux packages
-        run: npm run make
-
-      - name: Upload Linux artifacts
-        uses: actions/upload-artifact@v3
+      - run: npm install
+      - run: npm run make
+      - uses: actions/upload-artifact@v3
         with:
           name: linux-build
           path: out/
@@ -55,22 +37,13 @@ jobs:
   build-macos:
     runs-on: macos-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
         with:
           node-version: 18
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build macOS app
-        run: npm run make
-
-      - name: Upload macOS artifacts
-        uses: actions/upload-artifact@v3
+      - run: npm install
+      - run: npm run make
+      - uses: actions/upload-artifact@v3
         with:
           name: macos-build
           path: out/
