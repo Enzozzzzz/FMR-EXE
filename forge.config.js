@@ -13,6 +13,16 @@ module.exports = {
         name: 'FMR'
       },
     },
+
+    {
+      name: '@electron-forge/maker-dmg',
+      config: {
+        format: 'ULFO',
+        icon: 'logo-FMR.png',
+        overwrite: true
+      },
+    },
+
     {
       name: '@electron-forge/maker-zip',
       platforms: ['darwin'],
