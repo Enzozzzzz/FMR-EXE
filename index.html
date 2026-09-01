@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="unsafe-none">
+    <title>Backroom by FMR</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/x-icon" href="Logo-FMR.png">
+    
+    <!-- Librairies jsPDF & Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js" defer></script>
+</head>
+<body>
+
+    <div class="container" id="app-container">
+        <header>
+            <div class="header-content">
+                <div class="logo">
+                    <img src="Logo-FMR.png" alt="Logo Backroom by FMR" class="logo-img">
+                    Backroom by FMR
+                </div>
+                <nav>
+                    <ul>
+                        <li><a href="#" class="active" data-tab="stock"><i class="fas fa-boxes"></i> Inventaire</a></li>
+                        <li><a href="#" data-tab="form"><i class="fas fa-plus-circle"></i> Ajout Produit</a></li>
+                        <li><a href="#" data-tab="compta"><i class="fas fa-cash-register"></i> Comptabilité</a></li>
+                        <li><a href="#" data-tab="expenses"><i class="fas fa-receipt"></i> Dépenses & Marge</a></li>
+                        <li><a href="#" data-tab="depots"><i class="fas fa-handshake"></i> Dépôts-Vente</a></li>
+                        <li><a href="#" data-tab="projects"><i class="fas fa-bullhorn"></i> Projets & Com</a></li>
+                        <li><a href="#" data-tab="stats"><i class="fas fa-chart-pie"></i> Statistiques</a></li>
+                    </ul>
+                </nav>
+                <div class="header-right-group">
+                    <div class="theme-switch-wrapper">
+                        <span id="offline-badge" class="offline-indicator hidden"><i class="fas fa-wifi-slash"></i> Hors-ligne</span>
+                        <i class="fas fa-sun"></i>
+                        <label class="theme-switch" for="theme-checkbox">
+                            <input type="checkbox" id="theme-checkbox" />
+                            <div class="slider round"></div>
+                        </label>
+                        <i class="fas fa-moon"></i>
+                    </div>
+                    <div class="header-actions">
+                        <button id="change-sheet-btn" class="btn" title="Changer de Google Sheet">
+                            <i class="fas fa-exchange-alt"></i>
+                        </button>
+                        <button id="g-logout-btn-header" class="btn" title="Déconnexion">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- SECTION INVENTAIRE -->
+            <section class="tab-content active" id="stock">
+                <div class="stock-header">
+                    <div class="main-title-container">
+                         <button id="back-btn" class="btn-icon hidden" title="Retour"><i class="fas fa-arrow-left"></i></button>
+                         <h2 class="section-title" id="stock-title"><i class="fas fa-box-open"></i> Inventaire</h2>
+                    </div>
+                    
+                    <div class="stock-controls-row">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="search-input" placeholder="Rechercher nom, ref, type...">
+                        </div>
+
+                        <div class="filter-controls-group" id="stock-filters-bar" style="display:none;">
+                            <select id="filter-stock-price" class="filter-select">
+                                <option value="">Tous les prix</option>
+                                <option value="0-30">Moins de 30€</option>
+                                <option value="30-70">30€ à 70€</option>
+                                <option value="70-150">70€ à 150€</option>
+                                <option value="150+">Plus de 150€</option>
+                            </select>
+
+                            <select id="filter-stock-sort" class="filter-select">
+                                <option value="default">Tri par défaut</option>
+                                <option value="price-asc">Prix croissant</option>
+                                <option value="price-desc">Prix décroissant</option>
+                                <option value="name-asc">Nom (A-Z)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="header-tools">
+                            <input type="file" id="header-csv-input" accept=".csv" hidden>
+                            <button id="header-btn-import" class="btn btn-tool" title="Importer CSV ici" style="display:none;">
+                                <i class="fas fa-file-import"></i> <span>Importer</span>
+                            </button>
+                            <button id="header-btn-export" class="btn btn-tool" title="Exporter">
+                                <i class="fas fa-file-export"></i> <span>Exporter</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <nav id="breadcrumbs" aria-label="breadcrumb"></nav>
+                </div>
+                
+                <div class="inventory-grid" id="inventory-grid"></div>
+                <div class="pagination-container" id="pagination-controls"></div>
+
+                <div class="fab-container">
+                    <button class="fab" id="fab-add-btn" aria-label="Ajouter">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <div class="fab-options">
+                        <button class="fab-option" id="add-product-fab-btn" data-tooltip="Ajouter un produit">
+                            <i class="fas fa-tshirt"></i>
+                        </button>
+                        <button class="fab-option" id="add-folder-fab-btn" data-tooltip="Créer un dossier (onglet)">
+                            <i class="fas fa-folder-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION AJOUT RAPIDE -->
+            <section class="tab-content" id="form">
+                <div class="item-form">
+                    <h2 class="section-title" style="margin-bottom: 20px;"><i class="fas fa-pen-square"></i> Nouvel Article</h2>
+                    <div class="form-group">
+                        <label for="form-sheet-select">Choisir le dossier de destination :</label>
+                        <select id="form-sheet-select" class="stats-select">
+                            <option value="">Chargement...</option>
+                        </select>
+                    </div>
+
+                    <form id="main-add-form">
+                        <div id="form-dynamic-container" class="dynamic-fields-grid">
+                            <p style="color:var(--gray); grid-column: 1/-1; text-align:center;">Veuillez sélectionner un dossier ci-dessus pour afficher les champs.</p>
+                        </div>
+                        <div class="form-actions" style="margin-top:20px;">
+                            <button type="submit" class="btn btn-finish" id="form-submit-btn" disabled>
+                                <i class="fas fa-save"></i> Enregistrer l'article
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- SECTION COMPTABILITE -->
+            <section class="tab-content" id="compta">
+                <div class="stats-header">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <h2 class="section-title"><i class="fas fa-calculator"></i> Registre & Comptabilité</h2>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button id="export-fec-btn" class="btn btn-secondary">
+                                <i class="fas fa-file-invoice-dollar"></i> Export Expert-Comptable (FEC/CSV)
+                            </button>
+                            <button id="open-direct-sale-modal-btn" class="btn btn-finish" style="width:auto; margin:0;">
+                                <i class="fas fa-cart-plus"></i> + Enregistrer une Vente Libre
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="filter-controls-group" style="margin-top:15px; display:flex; flex-wrap:wrap; gap:10px;">
+                        <select id="filter-compta-period" class="filter-select">
+                            <option value="all">Toutes les dates</option>
+                            <option value="month">Ce mois-ci</option>
+                            <option value="quarter">Ce trimestre</option>
+                            <option value="year">Cette année</option>
+                        </select>
+
+                        <select id="filter-compta-type" class="filter-select">
+                            <option value="">Tous les types</option>
+                            <option value="B2C">B to C</option>
+                            <option value="B2B">B to B (0% TVA)</option>
+                            <option value="DEPOT">Dépôt-Vente</option>
+                            <option value="Vente Web">Vente Web</option>
+                            <option value="Personnalisation">Personnalisation</option>
+                            <option value="Prestation de Service">Prestation de Service</option>
+                        </select>
+
+                        <select id="filter-compta-payment" class="filter-select">
+                            <option value="">Tous les règlements</option>
+                            <option value="Carte">Carte Bancaire</option>
+                            <option value="Espèces">Espèces</option>
+                            <option value="Différé">Différé</option>
+                            <option value="Virement">Virement</option>
+                        </select>
+
+                        <select id="filter-compta-status" class="filter-select">
+                            <option value="">Tous les statuts</option>
+                            <option value="VALID">Ventes Effectives</option>
+                            <option value="ANNULE">Ventes Annulées / Avoirs</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="kpi-container" id="compta-kpis">
+                    <p style="text-align:center; width:100%;">Chargement des données comptables...</p>
+                </div>
+
+                <div class="stats-table-container">
+                    <table class="stats-table" id="compta-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Origine / Réf</th>
+                                <th>Description</th>
+                                <th>Type Vente</th>
+                                <th>Règlement</th>
+                                <th class="text-right">Total TTC</th>
+                                <th class="text-right">Assiette HT</th>
+                                <th class="text-right">TVA</th>
+                                <th>Détails & Statut</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="compta-table-body">
+                            <tr><td colspan="10" style="text-align:center;">Aucune vente enregistrée.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+         
+            <section class="tab-content" id="expenses">
+                <div class="stats-header">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 class="section-title"><i class="fas fa-wallet"></i> Trésorerie & Marge Nette Réelle</h2>
+                            <p style="color:var(--gray); font-size:0.9rem; margin-top:3px;">Suivez vos charges et mesurez la rentabilité nette réelle de votre activité.</p>
+                        </div>
+                        <button id="open-expense-modal-btn" class="btn btn-finish" style="width:auto; margin:0;">
+                            <i class="fas fa-plus-circle"></i> + Ajouter une Dépense / Charge
+                        </button>
+                    </div>
+
+                    <div class="filter-controls-group" style="margin-top:15px; display:flex; flex-wrap:wrap; gap:10px;">
+                        <select id="filter-expense-period" class="filter-select">
+                            <option value="all">Toutes les dates</option>
+                            <option value="month">Ce mois-ci</option>
+                            <option value="quarter">Ce trimestre</option>
+                            <option value="year">Cette année</option>
+                        </select>
+                        <select id="filter-expense-cat" class="filter-select">
+                            <option value="">Toutes les catégories</option>
+                            <option value="Achat Stock">Achat Stock / Pièces</option>
+                            <option value="Loyer/Local">Loyer & Charges Local</option>
+                            <option value="Logiciels/Abonnements">Logiciels & Outils Web</option>
+                            <option value="Packaging">Emballages & Packaging</option>
+                            <option value="Frais de Port">Frais de Port & Envois</option>
+                            <option value="Marketing/Ads">Marketing & Publicité</option>
+                            <option value="Autre">Autres dépenses</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Bilan Rentabilité & Marge Réelle -->
+                <div class="kpi-container" id="margin-kpis">
+                    <p style="text-align:center; width:100%;">Calcul de la rentabilité...</p>
+                </div>
+
+                <div class="stats-table-container">
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Catégorie</th>
+                                <th>Fournisseur / Description</th>
+                                <th>Règlement</th>
+                                <th class="text-right">Montant TTC</th>
+                                <th class="text-right">Montant HT</th>
+                                <th class="text-right">TVA</th>
+                                <th>Projet Associé</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="expenses-table-body">
+                            <tr><td colspan="9" style="text-align:center;">Aucune dépense enregistrée.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION BILAN DEPOTS-VENTES -->
+            <section class="tab-content" id="depots">
+                <div class="stats-header">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <h2 class="section-title"><i class="fas fa-handshake"></i> Bilan des Reversements Dépôt-Vente</h2>
+                    </div>
+                </div>
+
+                <div class="kpi-container" id="depot-kpis"></div>
+
+                <div class="stats-table-container">
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Dépositaire</th>
+                                <th>Nombre d'articles vendus</th>
+                                <th class="text-right">Total des Ventes TTC</th>
+                                <th class="text-right">Montant Dû Dépositaire</th>
+                                <th class="text-right">Commissions Boutique TTC</th>
+                            </tr>
+                        </thead>
+                        <tbody id="depots-table-body">
+                            <tr><td colspan="5" style="text-align:center;">Aucune vente en dépôt enregistrée.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- SECTION PROJETS & KANBAN -->
+            <section class="tab-content" id="projects">
+                <div class="stats-header">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 class="section-title"><i class="fas fa-tasks"></i> Projets & Stratégie Com</h2>
+                            <p style="color:var(--gray); font-size:0.9rem; margin-top:3px;">Organisez vos campagnes, checklists de production et retours sur investissement.</p>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <div class="project-view-switcher">
+                                <button type="button" class="btn-switch active" id="view-kanban-btn"><i class="fas fa-columns"></i> Kanban</button>
+                                <button type="button" class="btn-switch" id="view-timeline-btn"><i class="fas fa-calendar-alt"></i> Planning</button>
+                            </div>
+                            <button id="add-new-project-btn" class="btn btn-finish" style="width:auto; margin:0;">
+                                <i class="fas fa-folder-plus"></i> Nouveau Projet
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kanban-board" id="projects-kanban">
+                    <div class="kanban-column" data-status="Idée" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'Idée')">
+                        <div class="kanban-column-header"><i class="fas fa-lightbulb"></i> Idées (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-idee"></div>
+                    </div>
+                    <div class="kanban-column" data-status="En rédaction" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'En rédaction')">
+                        <div class="kanban-column-header"><i class="fas fa-pen-nib"></i> En préparation (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-redaction"></div>
+                    </div>
+                    <div class="kanban-column" data-status="Tourné/Créé" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'Tourné/Créé')">
+                        <div class="kanban-column-header"><i class="fas fa-video"></i> Tourné / Prêt (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-tourne"></div>
+                    </div>
+                    <div class="kanban-column" data-status="Publié" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event, 'Publié')">
+                        <div class="kanban-column-header"><i class="fas fa-check-circle"></i> Publié / Clôturé (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-publie"></div>
+                    </div>
+                </div>
+
+                <div id="projects-timeline" class="projects-timeline-view hidden">
+                    <div id="timeline-list" class="timeline-container"></div>
+                </div>
+            </section>
+
+            <!-- SECTION STATISTIQUES -->
+            <section class="tab-content" id="stats">
+                <div class="stats-header">
+                    <div class="stats-title-row">
+                        <h2 class="section-title"><i class="fas fa-chart-pie"></i> Tableau de bord</h2>
+                    </div>
+                    <div class="stats-controls-container">
+                        <div class="form-group" style="margin-bottom:0; flex:1;">
+                            <label for="stats-sheet-select">Analyser le dossier :</label>
+                            <select id="stats-sheet-select" class="stats-select">
+                                <option value="">Chargement...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="kpi-container" id="kpi-container">
+                    <p style="text-align:center; width:100%; color:var(--gray);">Sélectionnez un dossier ci-dessus.</p>
+                </div>
+
+                <div class="charts-row">
+                    <div class="chart-card" style="grid-column: 1 / -1;">
+                        <div class="chart-header" style="justify-content: space-between; display:flex; align-items:center;">
+                            <h3><i class="fas fa-chart-bar"></i> Analyse des Volumes & Marques</h3>
+                        </div>
+                        <div class="chart-body" id="main-chart"></div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- MODAL AJOUT DÉPENSE / CHARGE -->
+    <div class="modal" id="expense-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-receipt"></i> Enregistrer une Dépense / Charge</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="expense-form">
+                    <div class="dynamic-fields-grid">
+                        <div class="form-group">
+                            <label for="exp-date">Date de Dépense *</label>
+                            <input type="date" id="exp-date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="exp-cat">Catégorie de Charge *</label>
+                            <select id="exp-cat" required>
+                                <option value="Achat Stock">Achat Stock / Pièces</option>
+                                <option value="Loyer/Local">Loyer & Charges Local</option>
+                                <option value="Logiciels/Abonnements">Logiciels & Outils Web</option>
+                                <option value="Packaging">Emballages & Packaging</option>
+                                <option value="Frais de Port">Frais de Port & Envois</option>
+                                <option value="Marketing/Ads">Marketing & Publicité</option>
+                                <option value="Autre">Autres dépenses</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label for="exp-desc">Fournisseur / Description de la Charge *</label>
+                            <input type="text" id="exp-desc" placeholder="Ex: Cartons colis Raja, Abonnement Shopify, Loyer boutique..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="exp-ttc">Montant Total TTC (€) *</label>
+                            <input type="text" id="exp-ttc" inputmode="decimal" placeholder="0.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="exp-tva-rate">Taux de TVA appliqué</label>
+                            <select id="exp-tva-rate">
+                                <option value="20">TVA 20%</option>
+                                <option value="10">TVA 10%</option>
+                                <option value="5.5">TVA 5.5%</option>
+                                <option value="0">0% (Exonéré / Sans TVA)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="exp-payment">Mode de Règlement</label>
+                            <select id="exp-payment">
+                                <option value="Carte">Carte Bancaire Pro</option>
+                                <option value="Virement">Virement Bancaire</option>
+                                <option value="Prélèvement">Prélèvement Automatique</option>
+                                <option value="Espèces">Espèces</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="exp-project-link">Associer à un Projet (Calcul ROI)</label>
+                            <select id="exp-project-link">
+                                <option value="">-- Aucun projet associé --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Enregistrer la Charge</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VENTE PRODUIT DU STOCK -->
+    <div class="modal" id="sale-product-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-hand-holding-usd"></i> Enregistrer la Vente du Produit</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="sale-product-form">
+                    <input type="hidden" id="sale-product-row-idx">
+                    <input type="hidden" id="sale-product-details">
+                    
+                    <div class="sale-preview" id="sale-product-summary" style="margin-bottom:15px; padding:10px; background:var(--white); border-radius:8px; border:1px solid var(--border-color);"></div>
+
+                    <div class="dynamic-fields-grid">
+                        <div class="form-group">
+                            <label for="sale-price">Prix de vente final TTC (€) *</label>
+                            <input type="text" id="sale-price" inputmode="decimal" placeholder="ex: 100.00" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="sale-payment-method">Mode de Paiement *</label>
+                            <select id="sale-payment-method" required>
+                                <option value="Carte">Carte Bancaire</option>
+                                <option value="Espèces">Espèces</option>
+                                <option value="Différé">Paiement Différé</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="sale-trans-type">Type de Transaction *</label>
+                            <select id="sale-trans-type" required>
+                                <option value="B2C">B to C (Particulier - TVA 20%)</option>
+                                <option value="B2B">B to B (0% TVA Exonérée)</option>
+                                <option value="DEPOT">Dépôt-Vente (TVA sur commission)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="sale-project-link">Associer à un Projet (Calcul ROI)</label>
+                            <select id="sale-project-link">
+                                <option value="">-- Aucun projet associé --</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="diff-fields" class="dynamic-fields-grid hidden" style="background:var(--white); padding:15px; border-radius:8px; margin-top:10px; border:1px dashed var(--border-color);">
+                        <div class="form-group">
+                            <label for="diff-client-name">Nom du Client (Paiement Différé) *</label>
+                            <input type="text" id="diff-client-name" placeholder="Nom et prénom">
+                        </div>
+                        <div class="form-group">
+                            <label for="diff-paid">Montant déjà payé (€)</label>
+                            <input type="text" id="diff-paid" inputmode="decimal" placeholder="0.00" value="0">
+                        </div>
+                        <div class="form-group">
+                            <label for="diff-rest">Montant restant dû (€)</label>
+                            <input type="text" id="diff-rest" readonly style="background-color: var(--light); font-weight: bold;">
+                        </div>
+                    </div>
+
+                    <div id="b2b-fields" class="dynamic-fields-grid hidden" style="background:var(--white); padding:15px; border-radius:8px; margin-top:10px; border:1px dashed var(--border-color);">
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label for="b2b-company-name">Nom de la Société (B2B) *</label>
+                            <input type="text" id="b2b-company-name" placeholder="Raison sociale ou Société">
+                        </div>
+                    </div>
+
+                    <div id="depot-fields" class="dynamic-fields-grid hidden" style="background:var(--white); padding:15px; border-radius:8px; margin-top:10px; border:1px dashed var(--border-color);">
+                        <div class="form-group">
+                            <label for="depot-owner-name">Nom du Dépositaire *</label>
+                            <input type="text" id="depot-owner-name" placeholder="Nom du dépositaire">
+                        </div>
+                        <div class="form-group">
+                            <label for="depot-owner-due">Part reversée au dépositaire (€) *</label>
+                            <input type="text" id="depot-owner-due" inputmode="decimal" placeholder="ex: 60.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="depot-store-gain">Commission brute Boutique TTC (€)</label>
+                            <input type="text" id="depot-store-gain" readonly style="background-color: var(--light); font-weight: bold;">
+                        </div>
+                    </div>
+
+                    <div class="tva-summary-box" style="margin-top:15px; padding:15px; background:var(--white); border-radius:8px; font-weight:600; display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <span>Assiette HT : <strong id="sale-calc-ht">0.00 €</strong></span>
+                        <span>TVA : <strong id="sale-calc-tva">0.00 €</strong></span>
+                        <span>Total Vente TTC : <strong id="sale-calc-ttc">0.00 €</strong></span>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Valider la Vente & Déplacer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL VENTE LIBRE -->
+    <div class="modal" id="direct-sale-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-plus-circle"></i> Enregistrer une Vente Libre</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="direct-sale-form">
+                    <div class="dynamic-fields-grid">
+                        <div class="form-group">
+                            <label for="ds-type">Nature de la Vente *</label>
+                            <select id="ds-type" required>
+                                <option value="Vente Web">Vente Web</option>
+                                <option value="Personnalisation">Personnalisation</option>
+                                <option value="Prestation de Service">Prestation de Service</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ds-desc">Description / Référence *</label>
+                            <input type="text" id="ds-desc" placeholder="Ex: Broderie veste en jean" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="ds-price">Prix Total TTC (€) *</label>
+                            <input type="text" id="ds-price" inputmode="decimal" placeholder="ex: 75.00" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="ds-payment">Mode de Règlement *</label>
+                            <select id="ds-payment" required>
+                                <option value="Carte">Carte Bancaire / Stripe</option>
+                                <option value="Espèces">Espèces</option>
+                                <option value="Virement">Virement</option>
+                                <option value="Différé">Paiement Différé</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="ds-client">Client / Entreprise</label>
+                            <input type="text" id="ds-client" placeholder="Nom du client">
+                        </div>
+                        <div class="form-group">
+                            <label for="ds-project-link">Associer à un Projet (Calcul ROI)</label>
+                            <select id="ds-project-link">
+                                <option value="">-- Aucun projet associé --</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Enregistrer en Compta</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PROJET -->
+    <div class="modal" id="project-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-project-diagram"></i> Gestion de Projet & Stratégie Com</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="project-form">
+                    <input type="hidden" id="proj-edit-id">
+
+                    <div class="form-group" style="margin-bottom:15px;">
+                        <label for="proj-template-select"><i class="fas fa-magic"></i> Charger un Modèle Prédéfini :</label>
+                        <select id="proj-template-select" class="filter-select" style="width:100%;">
+                            <option value="">-- Aucun modèle (Projet personnalisé) --</option>
+                            <option value="capsule">Lancement Collection Capsule</option>
+                            <option value="depot">Mise en avant Dépôt-Vente & Créateurs</option>
+                            <option value="concours">Jeu Concours Réseaux Sociaux</option>
+                            <option value="shoot">Shooting Photo & Lookbook</option>
+                        </select>
+                    </div>
+
+                    <div class="dynamic-fields-grid">
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label for="proj-name">Nom du Projet / Campagne *</label>
+                            <input type="text" id="proj-name" required placeholder="Ex: Lancement Capsule Hiver FMR">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="proj-start">Date de Début</label>
+                            <input type="date" id="proj-start">
+                        </div>
+                        <div class="form-group">
+                            <label for="proj-end">Date de Publication / Deadline *</label>
+                            <input type="date" id="proj-end" required>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="proj-priority">Priorité / Urgence</label>
+                            <select id="proj-priority">
+                                <option value="Basse">🟢 Basse</option>
+                                <option value="Moyenne" selected>🟡 Moyenne</option>
+                                <option value="Haute">🔴 Haute</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="proj-status">Étape Kanban</label>
+                            <select id="proj-status">
+                                <option value="Idée">Idée</option>
+                                <option value="En rédaction">En rédaction</option>
+                                <option value="Tourné/Créé">Tourné/Créé</option>
+                                <option value="Publié">Publié</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:15px;">
+                        <label for="proj-desc">Objectifs & Description</label>
+                        <textarea id="proj-desc" rows="2" placeholder="Objectifs de la campagne, cibles visées..."></textarea>
+                    </div>
+
+                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-bullhorn"></i> Canaux & Supports de Communication</h4>
+                    <div class="channels-checkboxes-grid">
+                        <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="Instagram"> <i class="fab fa-instagram"></i> Instagram</label>
+                        <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="TikTok"> <i class="fab fa-tiktok"></i> TikTok</label>
+                        <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="Newsletter"> <i class="fas fa-envelope-open-text"></i> Newsletter</label>
+                        <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="Shooting"> <i class="fas fa-camera"></i> Shoot Photo</label>
+                        <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="Événement"> <i class="fas fa-glass-cheers"></i> Événement</label>
+                        <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="Boutique"> <i class="fas fa-store"></i> Vitrine & In-store</label>
+                    </div>
+
+                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-tasks"></i> Checklist de Production</h4>
+                    <div id="checklist-builder-container" class="checklist-builder"></div>
+                    <div style="display:flex; gap:10px; margin-top:8px;">
+                        <input type="text" id="new-task-input" placeholder="Ajouter une étape (ex: Rédiger script, Sélectionner pièces)...">
+                        <button type="button" class="btn btn-secondary" id="add-task-item-btn" style="padding:0 15px;"><i class="fas fa-plus"></i></button>
+                    </div>
+
+                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-wallet"></i> Budget Détaillé & Rushes Drive</h4>
+                    <div class="dynamic-fields-grid">
+                        <div class="form-group">
+                            <label for="proj-budget-ads">Budget Ads / Sponsoring (€)</label>
+                            <input type="text" id="proj-budget-ads" inputmode="decimal" placeholder="0.00">
+                        </div>
+                        <div class="form-group">
+                            <label for="proj-budget-prod">Budget Prod / Shooting (€)</label>
+                            <input type="text" id="proj-budget-prod" inputmode="decimal" placeholder="0.00">
+                        </div>
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label for="proj-drive-link"><i class="fab fa-google-drive"></i> Lien Dossier Google Drive (Rushes, Visuels HD)</label>
+                            <input type="url" id="proj-drive-link" placeholder="https://drive.google.com/drive/folders/...">
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:15px;">
+                        <label for="proj-com-plan">Plan de Contenu / Ligne Éditoriale</label>
+                        <textarea id="proj-com-plan" rows="3" placeholder="Semaine 1 : Teaser, Semaine 2 : Showcase pièces..."></textarea>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Enregistrer le Projet</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CONSULTATION PROJET -->
+    <div class="modal" id="view-project-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3 id="view-proj-title"><i class="fas fa-bullhorn"></i> Détails du Projet</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body" id="view-project-body"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary close-modal-btn">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALS COMPLÉMENTAIRES -->
+    <div class="modal" id="edit-modal">
+        <div class="modal-content"><div class="modal-header"><h3>Modifier le produit</h3><button class="close" type="button">&times;</button></div><div class="modal-body"></div></div>
+    </div>
+    <div class="modal" id="create-sheet-modal"> 
+        <div class="modal-content">
+            <div class="modal-header"><h3>Créer un dossier (Onglet)</h3><button class="close" type="button">&times;</button></div>
+            <div class="modal-body">
+                <form id="create-sheet-form">
+                    <div class="form-group"><label for="sheet-name">Nom du dossier</label><input type="text" id="sheet-name" required></div>
+                    <div class="modal-footer"><button type="button" class="btn btn-secondary close-modal-btn">Annuler</button><button type="submit" class="btn btn-finish">Créer</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="rename-modal">
+        <div class="modal-content">
+            <div class="modal-header"><h3>Renommer le dossier</h3><button class="close" type="button">&times;</button></div>
+            <div class="modal-body">
+                <form id="rename-form">
+                    <input type="hidden" id="rename-sheet-id">
+                    <div class="form-group"><label for="rename-sheet-name">Nouveau nom</label><input type="text" id="rename-sheet-name" required></div>
+                    <div class="modal-footer"><button type="button" class="btn btn-secondary close-modal-btn">Annuler</button><button type="submit" class="btn btn-finish">Sauvegarder</button></div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="modal" id="add-product-modal">
+        <div class="modal-content modal-lg">
+             <div class="modal-header"><h3>Ajouter un nouveau produit</h3><button class="close" type="button">&times;</button></div>
+            <div class="modal-body"></div>
+        </div>
+    </div>
+    <div class="modal" id="view-product-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header"><h3>Détails du Produit</h3><button class="close" type="button">&times;</button></div>
+            <div class="modal-body" id="view-product-body"></div>
+            <div class="modal-footer"><button type="button" class="btn btn-secondary close-modal-btn">Fermer</button></div>
+        </div>
+    </div>
+
+    <!-- MODALS AUTHENTIFICATION -->
+    <div class="login-overlay" id="login-overlay">
+        <div class="login-box">
+            <img src="Logo-FMR.png" alt="Logo" style="max-width: 100px; margin-bottom: 20px;">
+            <h3>Bienvenue sur Backroom</h3>
+            <p>Veuillez vous connecter à Google pour continuer.</p>
+            <button id="g-login-btn-main" class="google-login-uiverse" disabled style="opacity: 0.6; cursor: not-allowed;">
+                Connexion avec Google
+            </button>
+        </div>
+    </div>
+    
+    <div class="login-overlay sheet-prompt hidden" id="sheet-prompt">
+        <div class="login-box">
+            <h3>Base de données Google Sheet</h3>
+            <p>Collez l'ID de votre Sheet ou choisissez un fichier :</p>
+            <button id="open-picker-btn" class="btn btn-secondary" style="width: 100%; margin-bottom: 15px;">
+                <i class="fas fa-folder-open"></i> Choisir depuis Google Drive
+            </button>
+            <form id="sheet-id-form" style="width: 100%;">
+                <input type="text" id="spreadsheet-id-input" placeholder="Ou collez l'ID de la Sheet..." required>
+                <button type="submit" class="btn btn-finish">Charger la Sheet</button>
+            </form>
+            <button id="g-logout-btn-main" class="btn btn-secondary" style="margin-top: 10px;">Déconnexion</button>
+        </div>
+    </div>
+
+    <div id="notification-container"></div>
+</body>
+</html>
