@@ -26,7 +26,7 @@ const EXPENSES_HEADERS = [
 ];
 
 const PROJECTS_HEADERS = [
-    "ID", "Nom", "Date Debut", "Date Fin", "Statut", "Description", "Canaux", "Budget Ads", "Budget Prod", "Drive Link", "Plan", "Checklist", "Priorite"
+    "ID", "Nom", "Date Debut", "Date Fin", "Statut", "Description", "Canaux", "Budget Ads", "Budget Prod", "Drive Link", "Plan", "Checklist", "Priorite", "Trello Link"
 ];
 
 const PROJECT_TEMPLATES = {
@@ -432,7 +432,40 @@ async function initializeApp() {
 
     bindClick('fab-add-btn', () => els.fab.classList.toggle('active'));
     bindClick('add-product-fab-btn', openAddModal);
-    bindClick('add-folder-fab-btn', () => { const m = document.getElementById('create-sheet-modal'); if(m) m.style.display='block'; });
+        bindClick('add-folder-fab-btn', () => { 
+        const m = document.getElementById('create-sheet-modal'); 
+        if(m) {
+            const sel = document.getElementById('sheet-template');
+            if (sel) {
+                sel.innerHTML = '<option value="custom">-- Créer un formulaire sur mesure --</option>';
+                if (state.spreadsheetDetails && state.spreadsheetDetails.sheets) {
+                    state.spreadsheetDetails.sheets.forEach(sheet => {
+                        const title = sheet.properties.title;
+                        if (title !== COMPTA_SHEET_NAME && title !== PROJECTS_SHEET_NAME && title !== EXPENSES_SHEET_NAME) {
+                            const opt = document.createElement('option');
+                            opt.value = title;
+                            opt.textContent = `Cloner les champs de : ${title}`;
+                            sel.appendChild(opt);
+                        }
+                    });
+                }
+                sel.onchange = () => {
+                    const grp = document.getElementById('custom-headers-group');
+                    const inp = document.getElementById('custom-headers');
+                    if (sel.value === 'custom') {
+                        grp.style.display = 'block';
+                        inp.required = true;
+                    } else {
+                        grp.style.display = 'none';
+                        inp.required = false;
+                    }
+                };
+                sel.onchange(); // Force l'affichage initial
+            }
+            m.style.display = 'block';
+            setTimeout(() => document.getElementById('sheet-name')?.focus(), 50);
+        }
+    });
 
     bindClick('header-btn-import', () => { const i = document.getElementById('header-csv-input'); if(i) i.click(); });
     bindClick('header-btn-export', handleExportClick);
@@ -609,7 +642,7 @@ function setupSaleForms() {
                 const commissionTTC = Math.max(0, ttc - due);
                 ht = (commissionTTC / 1.20).toFixed(2);
                 tva = (commissionTTC - (commissionTTC / 1.20)).toFixed(2);
-                detailsSpecifiques += `[Dépôt: Dépositaire ${owner} | Dû: ${due.toFixed(2)}€ | Com Boutique TTC: ${commissionTTC.toFixed(2)}€] `;
+                detailsSpecifiques += `[Dépôt: Dépositaire ${owner} | Dû: ${due.toFixed(2)}€ | Com Boutique TTC: ${commissionTTC.toFixed(2)}€] [STATUT_DEPOT: EN_ATTENTE] `;
                 clientOrCompany = `Dépositaire: ${owner}`;
             } else if (transType === 'B2B') {
                 ht = ttc.toFixed(2);
@@ -1305,51 +1338,151 @@ function renderDepotsBilan() {
     if (!tbody || !kpiContainer) return;
 
     if (depotRows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Aucune vente en dépôt-vente.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucune vente en dépôt-vente.</td></tr>';
         kpiContainer.innerHTML = '';
         return;
     }
 
-    const summary = {};
-    let grandTotalTTC = 0, grandTotalDue = 0, grandTotalStore = 0;
+    let grandTotalTTC = 0, grandTotalDuePending = 0, grandTotalDuePaid = 0, grandTotalStore = 0;
+    let html = '';
 
-    depotRows.forEach(r => {
+    depotRows.slice().reverse().forEach(r => {
+        const date = r[0] || '-';
+        const article = `${r[3] || '-'} (${r[2] || '-'})`;
         const ttc = parseFloat(r[4]) || 0;
         const details = r[9] || '';
+        
         const ownerMatch = details.match(/Dépositaire\s*([^|\]]+)/);
         const dueMatch = details.match(/Dû:\s*([\d\.]+)€/);
         const gainMatch = details.match(/Com Boutique TTC:\s*([\d\.]+)€/);
+        const statusMatch = details.match(/\[STATUT_DEPOT:\s*([^\]]+)\]/);
 
-        const owner = ownerMatch ? ownerMatch[1].trim() : "Dépositaire Inconnu";
+        const owner = ownerMatch ? ownerMatch[1].trim() : "Inconnu";
         const due = dueMatch ? parseFloat(dueMatch[1]) || 0 : 0;
         const gain = gainMatch ? parseFloat(gainMatch[1]) || 0 : Math.max(0, ttc - due);
-
-        if (!summary[owner]) summary[owner] = { count: 0, ttc: 0, due: 0, gain: 0 };
-        summary[owner].count++;
-        summary[owner].ttc += ttc;
-        summary[owner].due += due;
-        summary[owner].gain += gain;
+        
+        // Rétrocompatibilité pour les anciennes ventes sans statut
+        const status = statusMatch ? statusMatch[1].trim() : "EN_ATTENTE";
 
         grandTotalTTC += ttc;
-        grandTotalDue += due;
         grandTotalStore += gain;
+        
+        if (status === 'PAYE' || status === 'PAYÉ') {
+            grandTotalDuePaid += due;
+        } else {
+            grandTotalDuePending += due;
+        }
+
+        const isPending = (status === 'EN_ATTENTE');
+
+        html += `
+            <tr>
+                <td>${date}</td>
+                <td><strong>${article}</strong></td>
+                <td><i class="fas fa-user-circle" style="color:var(--primary); margin-right:5px;"></i> ${owner}</td>
+                <td class="text-right font-bold">${ttc.toFixed(2)} €</td>
+                <td class="text-right" style="color:var(--danger); font-weight:700;">${due.toFixed(2)} €</td>
+                <td class="text-center">
+                    ${isPending 
+                        ? `<span class="product-status" style="background:#fff3e0; color:#ef6c00; padding:5px 10px;"><i class="fas fa-clock"></i> En attente</span>` 
+                        : `<span class="product-status" style="background:#e8f5e9; color:#2e7d32; padding:5px 10px;"><i class="fas fa-check"></i> Part versée</span>`}
+                </td>
+                <td class="text-center">
+                    ${isPending
+                        ? `<button class="btn-table-action btn-table-settle" onclick="settleDepot(${r.rowIndex})" title="Marquer comme payé au dépositaire"><i class="fas fa-hand-holding-usd"></i> Valider Versement</button>`
+                        : `<button class="btn-table-action" style="background-color: var(--gray); color:white;" onclick="unsettleDepot(${r.rowIndex})" title="Annuler le versement"><i class="fas fa-undo"></i> Rétablir dû</button>`
+                    }
+                </td>
+            </tr>
+        `;
     });
 
     kpiContainer.innerHTML = `
-        <div class="kpi-card"><div class="kpi-icon kpi-purple"><i class="fas fa-handshake"></i></div><div class="kpi-info"><span class="kpi-label">Total Ventes Dépôts TTC</span><span class="kpi-value">${grandTotalTTC.toFixed(2)} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-user-tag"></i></div><div class="kpi-info"><span class="kpi-label">Dû aux Dépositaires</span><span class="kpi-value">${grandTotalDue.toFixed(2)} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-store"></i></div><div class="kpi-info"><span class="kpi-label">Commissions Boutique TTC</span><span class="kpi-value">${grandTotalStore.toFixed(2)} €</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon kpi-purple"><i class="fas fa-handshake"></i></div><div class="kpi-info"><span class="kpi-label">CA Dépôts TTC</span><span class="kpi-value">${grandTotalTTC.toFixed(2)} €</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-hourglass-half"></i></div><div class="kpi-info"><span class="kpi-label">Reste à Verser</span><span class="kpi-value" style="color:var(--danger);">${grandTotalDuePending.toFixed(2)} €</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-check-circle"></i></div><div class="kpi-info"><span class="kpi-label">Déjà Versé</span><span class="kpi-value">${grandTotalDuePaid.toFixed(2)} €</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-store"></i></div><div class="kpi-info"><span class="kpi-label">Commissions Boutique</span><span class="kpi-value">${grandTotalStore.toFixed(2)} €</span></div></div>
     `;
 
-    tbody.innerHTML = Object.entries(summary).map(([owner, d]) => `
-        <tr>
-            <td class="font-bold"><i class="fas fa-user-circle" style="color:var(--primary); margin-right:8px;"></i> ${owner}</td>
-            <td>${d.count} article(s)</td>
-            <td class="text-right font-bold">${d.ttc.toFixed(2)} €</td>
-            <td class="text-right" style="color:var(--danger); font-weight:700;">${d.due.toFixed(2)} €</td>
-            <td class="text-right" style="color:var(--success); font-weight:700;">${d.gain.toFixed(2)} €</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = html;
+}
+
+window.settleDepot = async function(rowIndex) {
+    const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex);
+    if (!row) return;
+
+    if (await showFMRConfirm("Confirmer que le dépositaire a bien reçu sa part pour cet article ?")) {
+        showNotification("Mise à jour du statut...", "info");
+        let details = String(row[9]);
+        if (details.includes('[STATUT_DEPOT: EN_ATTENTE]')) {
+            details = details.replace('[STATUT_DEPOT: EN_ATTENTE]', '[STATUT_DEPOT: PAYE]');
+        } else if (!details.includes('[STATUT_DEPOT:')) {
+            details += ' [STATUT_DEPOT: PAYE]'; // Rétrocompatibilité
+        }
+        
+        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [details]);
+        showNotification("Versement au dépositaire confirmé !", "success");
+        loadComptaData(); // Recharge la vue
+    }
+};
+
+window.unsettleDepot = async function(rowIndex) {
+    const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex);
+    if (!row) return;
+
+    if (await showFMRConfirm("Annuler ce versement et remettre l'article en attente de paiement ?")) {
+        showNotification("Mise à jour du statut...", "info");
+        let details = String(row[9]);
+        if (details.includes('[STATUT_DEPOT: PAYE]')) {
+            details = details.replace('[STATUT_DEPOT: PAYE]', '[STATUT_DEPOT: EN_ATTENTE]');
+        }
+        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [details]);
+        showNotification("Statut remis en attente !", "info");
+        loadComptaData();
+    }
+};
+
+
+// --- NOTIFICATIONS DEADLINES PROJETS ---
+function checkProjectDeadlines() {
+    if (!state.projects || state.projects.length === 0) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    let alerts = [];
+
+    state.projects.forEach(p => {
+        // On ignore les projets déjà publiés/terminés ou sans date de fin
+        if (p.status === 'Publié' || !p.end) return;
+
+        const dl = new Date(p.end);
+        dl.setHours(0, 0, 0, 0);
+        const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+            alerts.push(`🚨 <strong>${p.name}</strong> : En retard (${p.end})`);
+        } else if (diffDays === 0) {
+            alerts.push(`⚠️ <strong>${p.name}</strong> : À terminer AUJOURD'HUI`);
+        } else if (diffDays > 0 && diffDays <= 3) {
+            alerts.push(`⏳ <strong>${p.name}</strong> : J-${diffDays} (${p.end})`);
+        }
+    });
+
+    if (alerts.length > 0) {
+        // On limite l'affichage à 4 projets maximum pour ne pas envahir l'écran
+        const displayAlerts = alerts.slice(0, 4);
+        let msg = displayAlerts.join('<br><br>');
+        
+        if (alerts.length > 4) {
+            msg += `<br><br><em>+ ${alerts.length - 4} autre(s) projet(s) urgent(s)</em>`;
+        }
+        
+        // On affiche la notification avec un petit délai de 2.5s pour ne pas surcharger visuellement l'arrivée sur l'app
+        setTimeout(() => {
+            showNotification(`<div style="font-size: 0.95rem; line-height: 1.4;"><strong>Rappel des Deadlines :</strong><br><br>${msg}</div>`, "info");
+        }, 2500);
+    }
 }
 
 // ========================================================
@@ -1362,14 +1495,14 @@ async function ensureProjectsSheetExists() {
     const exists = details.sheets.some(s => s.properties.title === PROJECTS_SHEET_NAME);
     if (!exists) {
         await googleApiManager.addSheet(state.currentSpreadsheetId, PROJECTS_SHEET_NAME);
-        await googleApiManager.appendRow(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A1:M1`, PROJECTS_HEADERS);
+        await googleApiManager.appendRow(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A1:N1`, PROJECTS_HEADERS);
     }
 }
 
 async function loadProjectsFromSheet() {
     if (!state.currentSpreadsheetId) return;
     await ensureProjectsSheetExists();
-    const rawData = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:M`);
+    const rawData = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:N`);
     if (!rawData || rawData.length < 2) {
         state.projects = [];
     } else {
@@ -1387,6 +1520,7 @@ async function loadProjectsFromSheet() {
             plan: r[10] || "",
             checklist: r[11] ? JSON.parse(r[11]) : [],
             priority: r[12] || "Moyenne",
+            trelloLink: r[13] || "",
             rowIndex: idx + 2
         }));
     }
@@ -1478,7 +1612,8 @@ function setupProjectEvents() {
                 document.getElementById('proj-drive-link')?.value || '',
                 document.getElementById('proj-com-plan')?.value || '',
                 JSON.stringify(state.currentProjectChecklist || []),
-                document.getElementById('proj-priority')?.value || 'Moyenne'
+                document.getElementById('proj-priority')?.value || 'Moyenne',
+                document.getElementById('proj-trello-link')?.value || ''
             ];
 
             await ensureProjectsSheetExists();
@@ -1486,10 +1621,10 @@ function setupProjectEvents() {
             if (editId) {
                 const existing = state.projects.find(p => p.id === editId);
                 if (existing) {
-                    await googleApiManager.updateRow(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A${existing.rowIndex}:M${existing.rowIndex}`, projObj);
+                    await googleApiManager.updateRow(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A${existing.rowIndex}:N${existing.rowIndex}`, projObj);
                 }
             } else {
-                await googleApiManager.appendRow(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:M`, projObj);
+                await googleApiManager.appendRow(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:N`, projObj);
             }
 
             setTimeout(() => {
@@ -1574,7 +1709,7 @@ function renderKanban() {
             card.ondragstart = (e) => handleDragStart(e, p.id);
             card.ondragend = handleDragEnd;
             card.onclick = (e) => {
-                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) return;
+                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.closest('a')) return;
                 openProjectDetailsModal(p.id);
             };
 
@@ -1657,7 +1792,8 @@ function renderKanban() {
                 <div style="font-size:0.85rem; color:var(--dark);">${p.desc || ''}</div>
                 ${checklistHtml}
                 ${roiHtml}
-                ${p.driveLink ? `<a href="${p.driveLink}" target="_blank" style="font-size:0.8rem; color:var(--info); text-decoration:none; font-weight:600;"><i class="fab fa-google-drive"></i> Rushes & Visuels HD</a>` : ''}
+                ${p.driveLink ? `<a href="${p.driveLink}" target="_blank" style="font-size:0.8rem; color:var(--info); text-decoration:none; font-weight:600; display:block; margin-top:4px;"><i class="fab fa-google-drive"></i> Rushes & Visuels HD</a>` : ''}
+                ${p.trelloLink ? `<div style="margin-top: 4px;"><a href="${p.trelloLink}" target="_blank" class="trello-link"><i class="fab fa-trello"></i> Voir sur Trello</a></div>` : ''}
                 
                 <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:5px; border-top:1px solid var(--border-color); padding-top:8px;">
                     <button class="btn btn-secondary" onclick="openEditProjectModal('${p.id}')" style="padding:4px 8px; font-size:11px;" title="Modifier"><i class="fas fa-pen"></i></button>
@@ -1733,11 +1869,13 @@ window.openProjectDetailsModal = function(id) {
                     </div>
                 </div>
                 <div class="project-detail-box">
-                    <h5><i class="fas fa-bullhorn"></i> Canaux & Rushes</h5>
+                    <h5><i class="fas fa-link"></i> Canaux & Liens Externes</h5>
                     <div class="channel-tags-container" style="margin-bottom:10px;">
                         ${(p.channels || []).map(ch => `<span class="channel-badge"><i class="fas fa-hashtag"></i> ${ch}</span>`).join('')}
                     </div>
-                    ${p.driveLink ? `<p><a href="${p.driveLink}" target="_blank" style="color:var(--info); font-weight:600;"><i class="fab fa-google-drive"></i> Accéder au dossier Google Drive</a></p>` : '<p style="color:var(--gray);">Aucun lien Drive.</p>'}
+                    ${p.driveLink ? `<p><a href="${p.driveLink}" target="_blank" style="color:var(--info); font-weight:600;"><i class="fab fa-google-drive"></i> Accéder au dossier Google Drive</a></p>` : ''}
+                    ${p.trelloLink ? `<p><a href="${p.trelloLink}" target="_blank" class="trello-link"><i class="fab fa-trello"></i> Tableau Trello du projet</a></p>` : ''}
+                    ${!p.driveLink && !p.trelloLink ? '<p style="color:var(--gray);">Aucun lien externe.</p>' : ''}
                 </div>
             </div>
 
@@ -1811,6 +1949,7 @@ window.openEditProjectModal = function(id) {
     document.getElementById('proj-budget-ads').value = proj.budgetAds;
     document.getElementById('proj-budget-prod').value = proj.budgetProd;
     document.getElementById('proj-drive-link').value = proj.driveLink;
+    document.getElementById('proj-trello-link').value = proj.trelloLink || '';
     document.getElementById('proj-com-plan').value = proj.plan;
 
     document.querySelectorAll('input[name="proj-channels"]').forEach(cb => {
@@ -2122,7 +2261,7 @@ async function preloadAllDataInBackground() {
         }
 
         await ensureProjectsSheetExists();
-        const projectsRaw = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:M`);
+        const projectsRaw = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:N`);
         if (projectsRaw && projectsRaw.length >= 2) {
             state.projects = projectsRaw.slice(1).map((r, idx) => ({
                 id: r[0] || Date.now().toString(),
@@ -2138,6 +2277,7 @@ async function preloadAllDataInBackground() {
                 plan: r[10] || "",
                 checklist: r[11] ? JSON.parse(r[11]) : [],
                 priority: r[12] || "Moyenne",
+                trelloLink: r[13] || "",
                 rowIndex: idx + 2
             }));
         } else {
@@ -2145,6 +2285,10 @@ async function preloadAllDataInBackground() {
         }
 
         console.log("Synchronisation globale en arrière-plan réussie.");
+        
+        // Appel de la vérification des deadlines une fois les données chargées
+        checkProjectDeadlines();
+        
     } catch (err) {
         console.error("Erreur lors de la synchronisation globale en arrière-plan :", err);
     }
@@ -2488,12 +2632,43 @@ async function handleMainFormSubmit(e) {
 
 async function handleAddSheet(e) {
     e.preventDefault();
-    const name = document.getElementById('sheet-name')?.value;
-    if(name && await googleApiManager.addSheet(state.currentSpreadsheetId, name)) { 
+    const name = document.getElementById('sheet-name')?.value.trim();
+    const template = document.getElementById('sheet-template')?.value;
+    const customHeaders = document.getElementById('custom-headers')?.value;
+    
+    if(!name) return;
+    
+    const submitBtn = document.querySelector('#create-sheet-form button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    if (await googleApiManager.addSheet(state.currentSpreadsheetId, name)) { 
+        let headersToWrite = [];
+        
+        // 1. Définition des champs à injecter
+        if (template === 'custom') {
+            headersToWrite = customHeaders.split(',').map(s => s.trim()).filter(Boolean);
+        } else if (template) {
+            const rawData = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${template}!A1:Z1`);
+            if (rawData && rawData.length > 0) {
+                headersToWrite = rawData[0]; // Clone la première ligne (les en-têtes)
+            }
+        }
+
+        // 2. Écriture des en-têtes dans le nouveau dossier
+        if (headersToWrite.length > 0) {
+            await googleApiManager.appendRow(state.currentSpreadsheetId, `${name}!A:A`, headersToWrite);
+        }
+
+        showNotification(`Dossier "${name}" et son formulaire créés !`, "success");
         loadSpreadsheet(state.currentSpreadsheetId);  
         const m = document.getElementById('create-sheet-modal');
-        if(m) m.style.display = 'none'; 
+        if (m) m.style.display = 'none'; 
+        document.getElementById('create-sheet-form').reset();
+    } else {
+        showNotification("Erreur lors de la création du dossier.", "error");
     }
+    
+    if (submitBtn) submitBtn.disabled = false;
 }
 
 window.openRenameModal = function(e, id, currentName) {

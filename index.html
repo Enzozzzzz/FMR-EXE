@@ -294,15 +294,17 @@
                     <table class="stats-table">
                         <thead>
                             <tr>
+                                <th>Date</th>
+                                <th>Article (Réf)</th>
                                 <th>Dépositaire</th>
-                                <th>Nombre d'articles vendus</th>
-                                <th class="text-right">Total des Ventes TTC</th>
-                                <th class="text-right">Montant Dû Dépositaire</th>
-                                <th class="text-right">Commissions Boutique TTC</th>
+                                <th class="text-right">Vendu TTC</th>
+                                <th class="text-right">Dû Dépositaire</th>
+                                <th class="text-center">Statut Reversement</th>
+                                <th class="text-center">Action</th>
                             </tr>
                         </thead>
                         <tbody id="depots-table-body">
-                            <tr><td colspan="5" style="text-align:center;">Aucune vente en dépôt enregistrée.</td></tr>
+                            <tr><td colspan="7" style="text-align:center;">Aucune vente en dépôt enregistrée.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -683,7 +685,7 @@
                         <button type="button" class="btn btn-secondary" id="add-task-item-btn" style="padding:0 15px;"><i class="fas fa-plus"></i></button>
                     </div>
 
-                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-wallet"></i> Budget Détaillé & Rushes Drive</h4>
+                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-wallet"></i> Budget Détaillé, Drive & Trello</h4>
                     <div class="dynamic-fields-grid">
                         <div class="form-group">
                             <label for="proj-budget-ads">Budget Ads / Sponsoring (€)</label>
@@ -693,9 +695,13 @@
                             <label for="proj-budget-prod">Budget Prod / Shooting (€)</label>
                             <input type="text" id="proj-budget-prod" inputmode="decimal" placeholder="0.00">
                         </div>
-                        <div class="form-group" style="grid-column:1/-1;">
-                            <label for="proj-drive-link"><i class="fab fa-google-drive"></i> Lien Dossier Google Drive (Rushes, Visuels HD)</label>
+                        <div class="form-group">
+                            <label for="proj-drive-link"><i class="fab fa-google-drive"></i> Lien Dossier Google Drive</label>
                             <input type="url" id="proj-drive-link" placeholder="https://drive.google.com/drive/folders/...">
+                        </div>
+                        <div class="form-group">
+                            <label for="proj-trello-link" style="color:#0052CC;"><i class="fab fa-trello"></i> Lien Trello</label>
+                            <input type="url" id="proj-trello-link" placeholder="https://trello.com/...">
                         </div>
                     </div>
 
@@ -733,14 +739,34 @@
     </div>
     <div class="modal" id="create-sheet-modal"> 
         <div class="modal-content">
-            <div class="modal-header"><h3>Créer un dossier (Onglet)</h3><button class="close" type="button">&times;</button></div>
+            <div class="modal-header">
+                <h3><i class="fas fa-folder-plus"></i> Créer un dossier (Onglet)</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
             <div class="modal-body">
                 <form id="create-sheet-form">
-                    <div class="form-group"><label for="sheet-name">Nom du dossier</label><input type="text" id="sheet-name" required></div>
-                    <div class="modal-footer"><button type="button" class="btn btn-secondary close-modal-btn">Annuler</button><button type="submit" class="btn btn-finish">Créer</button></div>
+                    <div class="form-group">
+                        <label for="sheet-name">Nom du dossier *</label>
+                        <input type="text" id="sheet-name" required placeholder="Ex: T-shirts Hiver">
+                    </div>
+                    <div class="form-group">
+                        <label for="sheet-template">Modèle de formulaire (Colonnes)</label>
+                        <select id="sheet-template" class="filter-select" style="width:100%;">
+                            <option value="custom">-- Créer un formulaire sur mesure --</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="custom-headers-group">
+                        <label for="custom-headers">Champs (séparés par des virgules) *</label>
+                        <textarea id="custom-headers" rows="2" required>Nom, Référence, Catégorie, Prix, État, Image</textarea>
+                        <p style="font-size: 0.8rem; color: var(--gray); margin-top: 5px;">Saisissez les colonnes souhaitées, séparées par une virgule.</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Créer le dossier</button>
+                    </div>
                 </form>
-            </div>
         </div>
+    </div>
     </div>
     <div class="modal" id="rename-modal">
         <div class="modal-content">

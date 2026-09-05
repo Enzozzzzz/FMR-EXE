@@ -464,7 +464,7 @@ textarea {
     align-items: flex-end;
 }
 
-.fab { 
+button.fab { 
     width: 60px !important; 
     height: 60px !important; 
     min-width: 60px !important;
@@ -485,7 +485,7 @@ textarea {
     padding: 0 !important;
 }
 
-.fab:hover { 
+button.fab:hover { 
     transform: rotate(90deg) scale(1.05); 
     background-color: var(--secondary); 
 }
@@ -710,8 +710,14 @@ body[data-theme="dark"] .product-confirm-delete {
 .btn-table-cancel { background-color: var(--danger); color: white; }
 
 /* ========================================================
-   SECTION GESTION DE PROJETS & ICÔNES (CORRIGÉ)
+   SECTION GESTION DE PROJETS & ICÔNES
    ======================================================== */
+
+/* Transitions des vues Projets (Kanban et Timeline) */
+#projects-kanban, 
+#projects-timeline {
+    animation: fadeIn 0.4s ease-in-out;
+}
 
 .project-view-switcher {
     display: flex;
@@ -798,7 +804,20 @@ body[data-theme="dark"] .channel-tag-option i.fa-tiktok { color: #FFFFFF !import
 .channel-tag-option i.fa-store { color: #795548 !important; }
 .channel-tag-option i.fa-google-drive, .form-group label i.fa-google-drive { color: #0F9D58 !important; }
 
-/* Badges Réseaux Sociaux (sur les cartes Kanban) corrigés (taille 16px fixe pour I et SVG) */
+/* Style du lien Trello pour les projets */
+.trello-link {
+    font-size: 0.8rem;
+    color: #0052CC; 
+    text-decoration: none;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 5px;
+}
+.trello-link:hover { text-decoration: underline; }
+
+/* Badges Réseaux Sociaux */
 .channel-tags-container {
     display: flex;
     flex-wrap: wrap;
