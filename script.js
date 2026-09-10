@@ -244,6 +244,28 @@ async function initializeApp() {
     googleApiManager.loadGoogleScripts();
 }
 
+// --- OUTILS GLOBAUX POUR LES DATES ---
+function parseFMRDate(d) {
+    if (!d) return null;
+    let strD = String(d).trim().split(' ')[0]; 
+    if (strD.includes('/')) {
+        const parts = strD.split('/');
+        if (parts.length === 3) {
+            return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+        }
+    }
+    const dt = new Date(strD);
+    return isNaN(dt.getTime()) ? null : dt;
+}
+
+function formatDateForFC(dt) {
+    if (!dt) return null;
+    const y = dt.getFullYear();
+    const m = String(dt.getMonth() + 1).padStart(2, '0');
+    const d = String(dt.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+}
+
 // ======================= CRM CLIENTS & PRESTATIONS ======================= //
 
 async function ensureClientsSheetExists() {
@@ -417,11 +439,125 @@ window.deleteAgendaEvent = async function() {
 };
 
 function initCalendar() {
-    const calendarEl = document.getElementById('calendar'); if (!calendarEl || !window.FullCalendar) return; if (calendarInstance) calendarInstance.destroy(); const events = [];
-    state.projects.forEach(p => { if (p.status !== 'Publié' && p.end) { events.push({ id: 'proj_' + p.id, title: '📌 [Projet] ' + p.name, start: p.end, allDay: true, backgroundColor: 'var(--primary)', borderColor: 'var(--primary)' }); } });
-    state.prestations.forEach(p => { if (p.status !== 'Terminé' && p.date) { const parts = p.date.split('/'); if(parts.length === 3) { const isoDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`; const client = state.clients.find(c => c.id === p.clientId); const cName = client ? client.name : ''; events.push({ id: 'prest_' + p.id, title: '✂️ [Presta] ' + cName, start: isoDate, allDay: true, backgroundColor: 'var(--info)', borderColor: 'var(--info)' }); } } });
-    state.agenda.forEach(a => { let color = 'var(--success)'; if (a.type === 'Rappel') color = 'var(--danger)'; if (a.type === 'Tâche') color = 'var(--gray)'; events.push({ id: 'agenda_' + a.id, title: a.title, start: a.start, end: a.end || a.start, allDay: true, backgroundColor: color, borderColor: color }); });
-    calendarInstance = new FullCalendar.Calendar(calendarEl, { locale: 'fr', initialView: 'dayGridMonth', headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }, buttonText: { today: "Aujourd'hui", month: 'Mois', week: 'Semaine', day: 'Jour' }, events: events, height: 'auto', dateClick: function(info) { document.getElementById('agenda-edit-id').value = ''; document.getElementById('agenda-form').reset(); document.getElementById('agenda-delete-btn-container').style.display = 'none'; document.getElementById('agenda-start').value = info.dateStr; const modal = document.getElementById('agenda-modal'); if(modal) modal.style.display = 'block'; }, eventClick: function(info) { const evId = info.event.id; if (evId.startsWith('proj_')) { openProjectDetailsModal(evId.replace('proj_', '')); } else if (evId.startsWith('prest_')) { editPrestation(evId.replace('prest_', '')); } else if (evId.startsWith('agenda_')) { const agId = evId.replace('agenda_', ''); const ag = state.agenda.find(x => x.id === agId); if (ag) { document.getElementById('agenda-edit-id').value = ag.id; document.getElementById('agenda-title').value = ag.title; document.getElementById('agenda-start').value = ag.start; document.getElementById('agenda-end').value = ag.end || ''; document.getElementById('agenda-type').value = ag.type || 'Autre'; document.getElementById('agenda-desc').value = ag.desc || ''; document.getElementById('agenda-delete-btn-container').style.display = 'block'; document.getElementById('agenda-modal').style.display = 'block'; } } } }); calendarInstance.render();
+    const calendarEl = document.getElementById('calendar'); 
+    if (!calendarEl || !window.FullCalendar) return; 
+    
+    try { if (calendarInstance) calendarInstance.destroy(); } catch(e) {}
+    
+    const events = [];
+
+    // Fonction pour ajouter 1 jour (FullCalendar exclut le dernier jour pour les événements allDay)
+    const getExclusiveEndStr = (dateObj) => {
+        if (!dateObj) return null;
+        const dt = new Date(dateObj);
+        dt.setDate(dt.getDate() + 1);
+        return formatDateForFC(dt);
+    };
+
+    // Chargement dynamique des Projets
+    state.projects.forEach(p => { 
+        if (p.status !== 'Publié' && p.end) { 
+            const startDt = parseFMRDate(p.start);
+            const endDt = parseFMRDate(p.end);
+            
+            const startIso = formatDateForFC(startDt) || formatDateForFC(endDt);
+            let endIso = formatDateForFC(endDt);
+            
+            if (startIso && endIso && startIso !== endIso) {
+                endIso = getExclusiveEndStr(endDt);
+            }
+            
+            if (startIso) {
+                events.push({ 
+                    id: 'proj_' + p.id, 
+                    title: '📌 [Projet] ' + p.name, 
+                    start: startIso, 
+                    end: (endIso && endIso !== startIso) ? endIso : undefined,
+                    allDay: true, 
+                    backgroundColor: 'var(--primary)', 
+                    borderColor: 'var(--primary)' 
+                }); 
+            }
+        } 
+    });
+
+    // Chargement dynamique des Prestations
+    state.prestations.forEach(p => { 
+        if (p.status !== 'Terminé' && p.date) { 
+            const dt = parseFMRDate(p.date);
+            const isoDate = formatDateForFC(dt); 
+            if (isoDate) {
+                const client = state.clients.find(c => c.id === p.clientId); 
+                const cName = client ? client.name : ''; 
+                events.push({ id: 'prest_' + p.id, title: '✂️ [Presta] ' + cName, start: isoDate, allDay: true, backgroundColor: 'var(--info)', borderColor: 'var(--info)' }); 
+            } 
+        } 
+    });
+
+    // Chargement dynamique des Événements personnalisés
+    state.agenda.forEach(a => { 
+        let color = 'var(--success)'; if (a.type === 'Rappel') color = 'var(--danger)'; if (a.type === 'Tâche') color = 'var(--gray)'; 
+        
+        const startDt = parseFMRDate(a.start);
+        const endDt = parseFMRDate(a.end);
+        
+        const startIso = formatDateForFC(startDt);
+        let endIso = formatDateForFC(endDt);
+        
+        if (startIso && endIso && startIso !== endIso) {
+            endIso = getExclusiveEndStr(endDt);
+        }
+
+        if (startIso) {
+            events.push({ 
+                id: 'agenda_' + a.id, 
+                title: a.title, 
+                start: startIso, 
+                end: (endIso && endIso !== startIso) ? endIso : undefined, 
+                allDay: true, 
+                backgroundColor: color, 
+                borderColor: color 
+            }); 
+        }
+    });
+    
+    calendarInstance = new FullCalendar.Calendar(calendarEl, { 
+        locale: 'fr', 
+        initialView: 'dayGridMonth', 
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }, 
+        buttonText: { today: "Aujourd'hui", month: 'Mois', week: 'Semaine', day: 'Jour' }, 
+        events: events, 
+        height: 'auto', 
+        dateClick: function(info) { 
+            document.getElementById('agenda-edit-id').value = ''; 
+            document.getElementById('agenda-form').reset(); 
+            document.getElementById('agenda-delete-btn-container').style.display = 'none'; 
+            document.getElementById('agenda-start').value = info.dateStr; 
+            const modal = document.getElementById('agenda-modal'); if(modal) modal.style.display = 'block'; 
+        }, 
+        eventClick: function(info) { 
+            const evId = info.event.id; 
+            if (evId.startsWith('proj_')) { 
+                openProjectDetailsModal(evId.replace('proj_', '')); 
+            } else if (evId.startsWith('prest_')) { 
+                editPrestation(evId.replace('prest_', '')); 
+            } else if (evId.startsWith('agenda_')) { 
+                const agId = evId.replace('agenda_', ''); 
+                const ag = state.agenda.find(x => x.id === agId); 
+                if (ag) { 
+                    document.getElementById('agenda-edit-id').value = ag.id; 
+                    document.getElementById('agenda-title').value = ag.title; 
+                    document.getElementById('agenda-start').value = ag.start; 
+                    document.getElementById('agenda-end').value = ag.end || ''; 
+                    document.getElementById('agenda-type').value = ag.type || 'Autre'; 
+                    document.getElementById('agenda-desc').value = ag.desc || ''; 
+                    document.getElementById('agenda-delete-btn-container').style.display = 'block'; 
+                    document.getElementById('agenda-modal').style.display = 'block'; 
+                } 
+            } 
+        } 
+    }); 
+    calendarInstance.render();
 }
 
 // --- FORMULAIRES DE VENTE ---
@@ -773,7 +909,16 @@ window.unsettleDepot = async function(rowIndex) {
 function checkProjectDeadlines() {
     if (!state.projects || state.projects.length === 0) return;
     const today = new Date(); today.setHours(0, 0, 0, 0); let alerts = [];
-    state.projects.forEach(p => { if (p.status === 'Publié' || !p.end) return; const dl = new Date(p.end); dl.setHours(0, 0, 0, 0); const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24)); if (diffDays < 0) { alerts.push(`🚨 <strong>${p.name}</strong> : En retard (${p.end})`); } else if (diffDays === 0) { alerts.push(`⚠️ <strong>${p.name}</strong> : À terminer AUJOURD'HUI`); } else if (diffDays > 0 && diffDays <= 3) { alerts.push(`⏳ <strong>${p.name}</strong> : J-${diffDays} (${p.end})`); } });
+    state.projects.forEach(p => { 
+        if (p.status === 'Publié' || !p.end) return; 
+        const dl = parseFMRDate(p.end); 
+        if (!dl) return;
+        dl.setHours(0, 0, 0, 0); 
+        const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24)); 
+        if (diffDays < 0) { alerts.push(`🚨 <strong>${p.name}</strong> : En retard (${p.end})`); } 
+        else if (diffDays === 0) { alerts.push(`⚠️ <strong>${p.name}</strong> : À terminer AUJOURD'HUI`); } 
+        else if (diffDays > 0 && diffDays <= 3) { alerts.push(`⏳ <strong>${p.name}</strong> : J-${diffDays} (${p.end})`); } 
+    });
     if (alerts.length > 0) { const displayAlerts = alerts.slice(0, 4); let msg = displayAlerts.join('<br><br>'); if (alerts.length > 4) { msg += `<br><br><em>+ ${alerts.length - 4} autre(s) projet(s) urgent(s)</em>`; } setTimeout(() => { showNotification(`<div style="font-size: 0.95rem; line-height: 1.4;"><strong>Rappel des Deadlines :</strong><br><br>${msg}</div>`, "info"); }, 2500); }
 }
 
@@ -790,7 +935,13 @@ async function loadProjectsFromSheet() {
     if (!state.currentSpreadsheetId) return; await ensureProjectsSheetExists();
     const rawData = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${PROJECTS_SHEET_NAME}!A:N`);
     if (!rawData || rawData.length < 2) { state.projects = []; } else { state.projects = rawData.slice(1).map((r, idx) => ({ id: r[0] || Date.now().toString(), name: r[1] || 'Sans nom', start: r[2] || '', end: r[3] || '', status: r[4] || "Idée", desc: r[5] || '', channels: r[6] ? r[6].split(',').map(s => s.trim()).filter(Boolean) : [], budgetAds: r[7] || "0", budgetProd: r[8] || "0", driveLink: r[9] || "", plan: r[10] || "", checklist: r[11] ? JSON.parse(r[11]) : [], priority: r[12] || "Moyenne", trelloLink: r[13] || "", rowIndex: idx + 2 })); }
-    renderKanban(); if (!document.getElementById('projects-timeline')?.classList.contains('hidden')) { renderTimeline(); } if (!document.getElementById('projects-history')?.classList.contains('hidden')) { renderHistory(); }
+    
+    renderKanban(); 
+    if (!document.getElementById('projects-timeline')?.classList.contains('hidden')) { renderTimeline(); } 
+    if (!document.getElementById('projects-history')?.classList.contains('hidden')) { renderHistory(); }
+    
+    // Met à jour l'agenda dynamiquement après chargement des projets
+    initCalendar();
 }
 
 function setupProjectEvents() {
@@ -855,7 +1006,13 @@ function renderKanban() {
 
     state.projects.forEach(p => {
         let isArchived = false;
-        if (p.status === 'Publié' && p.end) { const dl = new Date(p.end); dl.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0); if (Math.floor((today - dl) / (1000 * 60 * 60 * 24)) >= 7) { isArchived = true; } }
+        if (p.status === 'Publié' && p.end) { 
+            const dl = parseFMRDate(p.end);
+            if (dl) {
+                dl.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0); 
+                if (Math.floor((today - dl) / (1000 * 60 * 60 * 24)) >= 7) { isArchived = true; } 
+            }
+        }
         if (isArchived) return; 
 
         const col = cols[p.status] || cols["Idée"]; counts[p.status] = (counts[p.status] || 0) + 1;
@@ -865,8 +1022,16 @@ function renderKanban() {
 
             let deadlineHtml = '';
             if (p.end) {
-                const today = new Date(); today.setHours(0,0,0,0); const dl = new Date(p.end); const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24));
-                if (diffDays < 0) { deadlineHtml = `<span class="deadline-tag is-overdue"><i class="fas fa-exclamation-circle"></i> En retard (${p.end})</span>`; } else if (diffDays <= 3) { deadlineHtml = `<span class="deadline-tag is-approaching"><i class="fas fa-clock"></i> J-${diffDays} (${p.end})</span>`; } else { deadlineHtml = `<span class="deadline-tag"><i class="fas fa-calendar-alt"></i> ${p.end}</span>`; }
+                const dl = parseFMRDate(p.end);
+                if (dl) {
+                    const today = new Date(); today.setHours(0,0,0,0); 
+                    const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24));
+                    if (diffDays < 0) { deadlineHtml = `<span class="deadline-tag is-overdue"><i class="fas fa-exclamation-circle"></i> En retard (${p.end})</span>`; } 
+                    else if (diffDays <= 3) { deadlineHtml = `<span class="deadline-tag is-approaching"><i class="fas fa-clock"></i> J-${diffDays} (${p.end})</span>`; } 
+                    else { deadlineHtml = `<span class="deadline-tag"><i class="fas fa-calendar-alt"></i> ${p.end}</span>`; }
+                } else {
+                    deadlineHtml = `<span class="deadline-tag"><i class="fas fa-calendar-alt"></i> ${p.end}</span>`;
+                }
             }
 
             const channelBadges = (p.channels || []).map(ch => {
@@ -945,12 +1110,20 @@ function renderTimeline() {
     if (state.projects.length === 0) { container.innerHTML = '<p style="text-align:center; color:var(--gray);">Aucun projet planifié.</p>'; return; }
 
     const activeProjects = state.projects.filter(p => {
-        if (p.status !== 'Publié' || !p.end) return true;
-        const dl = new Date(p.end); dl.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0);
+        if (p.status === 'Publié') return false; 
+        if (!p.end) return true;
+        const dl = parseFMRDate(p.end); 
+        if (!dl) return true;
+        dl.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0);
         return Math.floor((today - dl) / (1000 * 60 * 60 * 24)) < 7;
     });
 
-    const sorted = [...activeProjects].sort((a, b) => (a.end || '9999').localeCompare(b.end || '9999'));
+    const sorted = [...activeProjects].sort((a, b) => {
+        const dA = parseFMRDate(a.end) || new Date('9999-12-31');
+        const dB = parseFMRDate(b.end) || new Date('9999-12-31');
+        return dA - dB;
+    });
+
     container.innerHTML = sorted.map(p => `
         <div class="timeline-card" onclick="openProjectDetailsModal('${p.id}')" style="cursor:pointer;">
             <div><strong style="font-size:1.1rem; color:var(--secondary);">${p.name}</strong><div style="font-size:0.85rem; color:var(--gray); margin-top:3px;"><i class="fas fa-clock"></i> Deadline : <strong>${p.end || 'Non définie'}</strong> (Début : ${p.start || 'N/A'})</div></div>
@@ -962,14 +1135,20 @@ function renderHistory() {
     const tbody = document.getElementById('history-table-body'); const kpiContainer = document.getElementById('history-kpis'); if (!tbody || !kpiContainer) return;
     const archivedProjects = state.projects.filter(p => {
         if (p.status !== 'Publié' || !p.end) return false;
-        const dl = new Date(p.end); dl.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0);
+        const dl = parseFMRDate(p.end); 
+        if (!dl) return false;
+        dl.setHours(0,0,0,0); const today = new Date(); today.setHours(0,0,0,0);
         return Math.floor((today - dl) / (1000 * 60 * 60 * 24)) >= 7;
     });
 
     if (archivedProjects.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun projet archivé (Délai de 7 jours après parution).</td></tr>'; kpiContainer.innerHTML = ''; return; }
 
     let totalBudget = 0, totalCA = 0, html = '';
-    archivedProjects.sort((a, b) => new Date(b.end || 0) - new Date(a.end || 0)).forEach(p => {
+    archivedProjects.sort((a, b) => {
+        const dA = parseFMRDate(a.end) || new Date(0);
+        const dB = parseFMRDate(b.end) || new Date(0);
+        return dB - dA;
+    }).forEach(p => {
         const budget = (parseFloat(p.budgetAds) || 0) + (parseFloat(p.budgetProd) || 0); let ca = 0;
         state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && r[11] !== "AVOIR" && r[11] !== "ECHANGE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { ca += parseFloat(r[4]) || 0; } });
         const roi = ca - budget; totalBudget += budget; totalCA += ca;
