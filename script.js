@@ -1,5 +1,5 @@
 /* ========================================================================
-   BACKROOM by FMR - v15.3 (Comptabilité, Dépenses, Suppression Dossier & UX)
+   BACKROOM by FMR - v15.4 (Comptabilité, Dépenses, Projets & Archivage)
    ======================================================================== */
 
 window.gapiClientLoaded = function() { googleApiManager.gapiClientLoaded(); };
@@ -411,7 +411,6 @@ async function initializeApp() {
     );
     window.addEventListener('click', e => { if (e.target.classList.contains('modal')) closeModal(e.target); });
 
-    // Fermer les menus d'engrenage des dossiers si clic en dehors
     window.addEventListener('click', (e) => {
         if (!e.target.closest('.more-menu')) {
             document.querySelectorAll('.more-content.show').forEach(m => m.classList.remove('show'));
@@ -432,7 +431,8 @@ async function initializeApp() {
 
     bindClick('fab-add-btn', () => els.fab.classList.toggle('active'));
     bindClick('add-product-fab-btn', openAddModal);
-        bindClick('add-folder-fab-btn', () => { 
+
+    bindClick('add-folder-fab-btn', () => { 
         const m = document.getElementById('create-sheet-modal'); 
         if(m) {
             const sel = document.getElementById('sheet-template');
@@ -460,7 +460,7 @@ async function initializeApp() {
                         inp.required = false;
                     }
                 };
-                sel.onchange(); // Force l'affichage initial
+                sel.onchange(); 
             }
             m.style.display = 'block';
             setTimeout(() => document.getElementById('sheet-name')?.focus(), 50);
@@ -489,15 +489,28 @@ async function initializeApp() {
     bindClick('view-kanban-btn', () => {
         document.getElementById('view-kanban-btn')?.classList.add('active');
         document.getElementById('view-timeline-btn')?.classList.remove('active');
+        document.getElementById('view-history-btn')?.classList.remove('active');
         document.getElementById('projects-kanban')?.classList.remove('hidden');
         document.getElementById('projects-timeline')?.classList.add('hidden');
+        document.getElementById('projects-history')?.classList.add('hidden');
     });
     bindClick('view-timeline-btn', () => {
         document.getElementById('view-timeline-btn')?.classList.add('active');
         document.getElementById('view-kanban-btn')?.classList.remove('active');
+        document.getElementById('view-history-btn')?.classList.remove('active');
         document.getElementById('projects-kanban')?.classList.add('hidden');
         document.getElementById('projects-timeline')?.classList.remove('hidden');
+        document.getElementById('projects-history')?.classList.add('hidden');
         renderTimeline();
+    });
+    bindClick('view-history-btn', () => {
+        document.getElementById('view-history-btn')?.classList.add('active');
+        document.getElementById('view-kanban-btn')?.classList.remove('active');
+        document.getElementById('view-timeline-btn')?.classList.remove('active');
+        document.getElementById('projects-kanban')?.classList.add('hidden');
+        document.getElementById('projects-timeline')?.classList.add('hidden');
+        document.getElementById('projects-history')?.classList.remove('hidden');
+        renderHistory();
     });
 
     if(els.grid) els.grid.addEventListener('click', handleGridClick);
@@ -1442,7 +1455,6 @@ window.unsettleDepot = async function(rowIndex) {
     }
 };
 
-
 // --- NOTIFICATIONS DEADLINES PROJETS ---
 function checkProjectDeadlines() {
     if (!state.projects || state.projects.length === 0) return;
@@ -1453,7 +1465,6 @@ function checkProjectDeadlines() {
     let alerts = [];
 
     state.projects.forEach(p => {
-        // On ignore les projets déjà publiés/terminés ou sans date de fin
         if (p.status === 'Publié' || !p.end) return;
 
         const dl = new Date(p.end);
@@ -1470,7 +1481,6 @@ function checkProjectDeadlines() {
     });
 
     if (alerts.length > 0) {
-        // On limite l'affichage à 4 projets maximum pour ne pas envahir l'écran
         const displayAlerts = alerts.slice(0, 4);
         let msg = displayAlerts.join('<br><br>');
         
@@ -1478,7 +1488,6 @@ function checkProjectDeadlines() {
             msg += `<br><br><em>+ ${alerts.length - 4} autre(s) projet(s) urgent(s)</em>`;
         }
         
-        // On affiche la notification avec un petit délai de 2.5s pour ne pas surcharger visuellement l'arrivée sur l'app
         setTimeout(() => {
             showNotification(`<div style="font-size: 0.95rem; line-height: 1.4;"><strong>Rappel des Deadlines :</strong><br><br>${msg}</div>`, "info");
         }, 2500);
@@ -1527,6 +1536,9 @@ async function loadProjectsFromSheet() {
     renderKanban();
     if (!document.getElementById('projects-timeline')?.classList.contains('hidden')) {
         renderTimeline();
+    }
+    if (!document.getElementById('projects-history')?.classList.contains('hidden')) {
+        renderHistory();
     }
 }
 
@@ -1699,6 +1711,18 @@ function renderKanban() {
     const counts = { "Idée": 0, "En rédaction": 0, "Tourné/Créé": 0, "Publié": 0 };
 
     state.projects.forEach(p => {
+        let isArchived = false;
+        if (p.status === 'Publié' && p.end) {
+            const dl = new Date(p.end);
+            dl.setHours(0,0,0,0);
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            if (Math.floor((today - dl) / (1000 * 60 * 60 * 24)) >= 7) {
+                isArchived = true;
+            }
+        }
+        if (isArchived) return; 
+
         const col = cols[p.status] || cols["Idée"];
         counts[p.status] = (counts[p.status] || 0) + 1;
 
@@ -1899,7 +1923,16 @@ function renderTimeline() {
         return;
     }
 
-    const sorted = [...state.projects].sort((a, b) => (a.end || '9999').localeCompare(b.end || '9999'));
+    const activeProjects = state.projects.filter(p => {
+        if (p.status !== 'Publié' || !p.end) return true;
+        const dl = new Date(p.end);
+        dl.setHours(0,0,0,0);
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        return Math.floor((today - dl) / (1000 * 60 * 60 * 24)) < 7;
+    });
+
+    const sorted = [...activeProjects].sort((a, b) => (a.end || '9999').localeCompare(b.end || '9999'));
 
     container.innerHTML = sorted.map(p => `
         <div class="timeline-card" onclick="openProjectDetailsModal('${p.id}')" style="cursor:pointer;">
@@ -1916,6 +1949,72 @@ function renderTimeline() {
             </div>
         </div>
     `).join('');
+}
+
+function renderHistory() {
+    const tbody = document.getElementById('history-table-body');
+    const kpiContainer = document.getElementById('history-kpis');
+    if (!tbody || !kpiContainer) return;
+
+    const archivedProjects = state.projects.filter(p => {
+        if (p.status !== 'Publié' || !p.end) return false;
+        const dl = new Date(p.end);
+        dl.setHours(0,0,0,0);
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        return Math.floor((today - dl) / (1000 * 60 * 60 * 24)) >= 7;
+    });
+
+    if (archivedProjects.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucun projet archivé (Délai de 7 jours après parution).</td></tr>';
+        kpiContainer.innerHTML = '';
+        return;
+    }
+
+    let totalBudget = 0;
+    let totalCA = 0;
+    let html = '';
+
+    archivedProjects.sort((a, b) => new Date(b.end || 0) - new Date(a.end || 0)).forEach(p => {
+        const budget = (parseFloat(p.budgetAds) || 0) + (parseFloat(p.budgetProd) || 0);
+        let ca = 0;
+        
+        state.comptaRawRows.forEach(r => {
+            if (r[11] !== "ANNULE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) {
+                ca += parseFloat(r[4]) || 0;
+            }
+        });
+        
+        const roi = ca - budget;
+        totalBudget += budget;
+        totalCA += ca;
+
+        html += `
+            <tr>
+                <td><strong>${p.name}</strong></td>
+                <td>${p.end}</td>
+                <td><span class="product-category">${(p.channels || []).join(', ')}</span></td>
+                <td class="text-right">${budget.toFixed(2)} €</td>
+                <td class="text-right font-bold">${ca.toFixed(2)} €</td>
+                <td class="text-right" style="color:${roi >= 0 ? 'var(--success)' : 'var(--danger)'}; font-weight:bold;">${roi >= 0 ? '+' : ''}${roi.toFixed(2)} €</td>
+                <td class="text-center">
+                    <button class="btn-table-action" style="background-color: var(--info); color:white;" onclick="openProjectDetailsModal('${p.id}')" title="Voir bilan complet"><i class="fas fa-eye"></i></button>
+                    <button class="btn-table-action btn-table-cancel" onclick="deleteProjectSheet('${p.id}')" title="Supprimer définitivement"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>
+        `;
+    });
+
+    const totalROI = totalCA - totalBudget;
+
+    kpiContainer.innerHTML = `
+        <div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-archive"></i></div><div class="kpi-info"><span class="kpi-label">Projets Terminés</span><span class="kpi-value">${archivedProjects.length}</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-wallet"></i></div><div class="kpi-info"><span class="kpi-label">Total Investi</span><span class="kpi-value">${totalBudget.toFixed(2)} €</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-coins"></i></div><div class="kpi-info"><span class="kpi-label">CA Total Généré</span><span class="kpi-value">${totalCA.toFixed(2)} €</span></div></div>
+        <div class="kpi-card"><div class="kpi-icon ${totalROI >= 0 ? 'kpi-green' : 'kpi-purple'}"><i class="fas fa-chart-line"></i></div><div class="kpi-info"><span class="kpi-label">ROI Net Bilan</span><span class="kpi-value" style="color:${totalROI >= 0 ? 'var(--success)' : 'var(--danger)'};">${totalROI >= 0 ? '+' : ''}${totalROI.toFixed(2)} €</span></div></div>
+    `;
+
+    tbody.innerHTML = html;
 }
 
 window.toggleKanbanTask = async function(projectId, taskIndex) {
@@ -2221,16 +2320,12 @@ async function loadSpreadsheet(id) {
         renderSheetList();
         updateBreadcrumbs();
 
-        // SYNCHRONISATION GLOBALE EN ARRIÈRE-PLAN : 
-        // Charge la comptabilité, les dépenses et les projets dès le démarrage
-        // pour que toutes les sections communiquent immédiatement entre elles.
         preloadAllDataInBackground();
     } else {
         if (els.sheetPrompt) els.sheetPrompt.classList.remove('hidden');
     }
 }
 
-// Fonction de chargement global discret au démarrage
 async function preloadAllDataInBackground() {
     try {
         await ensureComptaSheetExists();
@@ -2286,7 +2381,6 @@ async function preloadAllDataInBackground() {
 
         console.log("Synchronisation globale en arrière-plan réussie.");
         
-        // Appel de la vérification des deadlines une fois les données chargées
         checkProjectDeadlines();
         
     } catch (err) {
@@ -2523,7 +2617,6 @@ function renderPaginationControls(totalPages) {
     createBtn('<i class="fas fa-angle-right"></i>', state.currentPage + 1, state.currentPage === totalPages);
 }
 
-// Modals Helpers
 function openViewModal(rowIdx) {
     const item = state.data.find(i => i.gSheetRowIndex == rowIdx);
     if (!item) return;
@@ -2644,17 +2737,15 @@ async function handleAddSheet(e) {
     if (await googleApiManager.addSheet(state.currentSpreadsheetId, name)) { 
         let headersToWrite = [];
         
-        // 1. Définition des champs à injecter
         if (template === 'custom') {
             headersToWrite = customHeaders.split(',').map(s => s.trim()).filter(Boolean);
         } else if (template) {
             const rawData = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${template}!A1:Z1`);
             if (rawData && rawData.length > 0) {
-                headersToWrite = rawData[0]; // Clone la première ligne (les en-têtes)
+                headersToWrite = rawData[0];
             }
         }
 
-        // 2. Écriture des en-têtes dans le nouveau dossier
         if (headersToWrite.length > 0) {
             await googleApiManager.appendRow(state.currentSpreadsheetId, `${name}!A:A`, headersToWrite);
         }
@@ -2892,7 +2983,6 @@ function setupTheme() {
         themeToggle.checked = (saved === 'dark');
     }
 }
-
 
 function showFMRConfirm(message) {
     return new Promise((resolve) => {

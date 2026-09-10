@@ -322,6 +322,7 @@
                             <div class="project-view-switcher">
                                 <button type="button" class="btn-switch active" id="view-kanban-btn"><i class="fas fa-columns"></i> Kanban</button>
                                 <button type="button" class="btn-switch" id="view-timeline-btn"><i class="fas fa-calendar-alt"></i> Planning</button>
+                                <button type="button" class="btn-switch" id="view-history-btn"><i class="fas fa-archive"></i> Historique & Bilan</button>
                             </div>
                             <button id="add-new-project-btn" class="btn btn-finish" style="width:auto; margin:0;">
                                 <i class="fas fa-folder-plus"></i> Nouveau Projet
@@ -352,6 +353,28 @@
                 <div id="projects-timeline" class="projects-timeline-view hidden">
                     <div id="timeline-list" class="timeline-container"></div>
                 </div>
+                <div id="projects-history" class="projects-history-view hidden">
+                <div class="kpi-container" id="history-kpis"></div>
+                <div class="stats-table-container">
+                    <table class="stats-table">
+                        <thead>
+                            <tr>
+                                <th>Projet / Campagne</th>
+                                <th>Date de Fin</th>
+                                <th>Canaux</th>
+                                <th class="text-right">Budget Investi</th>
+                                <th class="text-right">CA Généré</th>
+                                <th class="text-right">ROI Net</th>
+                                <th class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr><td colspan="7" style="text-align:center;">Aucun projet archivé.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
             </section>
 
             <!-- SECTION STATISTIQUES -->

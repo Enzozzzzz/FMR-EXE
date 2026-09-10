@@ -23,6 +23,8 @@ const startLocalServer = () => {
     });
 };
 
+
+
 const createWindow = () => {
     mainWindow = new BrowserWindow({
         width: 1400,

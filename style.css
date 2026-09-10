@@ -1096,3 +1096,9 @@ body[data-theme="dark"] .channel-tag-option i.fa-tiktok { color: #FFFFFF !import
     pointer-events: none;
     transition: all 0.3s ease;
 }
+
+/* Vue Historique des projets */
+.projects-history-view {
+    margin-top: 20px;
+    animation: fadeIn 0.4s ease-in-out;
+}
