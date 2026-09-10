@@ -1,5 +1,5 @@
 /* ========================================================================
-   BACKROOM by FMR - v16.1 (Agenda Interactif, Synchro Projets/Prestations)
+   BACKROOM by FMR - v17.0 (Gestion Avancée Annulations, Assignations, Dépôts)
    ======================================================================== */
 
 window.gapiClientLoaded = function() { googleApiManager.gapiClientLoaded(); };
@@ -107,7 +107,7 @@ let state = {
     currentSpreadsheetId: localStorage.getItem('spreadsheetId') || null, spreadsheetDetails: null, currentSheet: null,
     headers: [], data: [], view: 'sheets', currentPage: 1, itemsPerPage: 12, formHeaders: [],
     comptaRawRows: [], expensesRawRows: [], projects: [], currentProjectChecklist: [],
-    clients: [], prestations: [], agenda: []
+    clients: [], prestations: [], agenda: [], allStock: []
 };
 
 const els = {};
@@ -206,6 +206,16 @@ async function initializeApp() {
         renderHistory();
     });
 
+    // Basculement vues Dépôt
+    bindClick('view-depot-boutique-btn', () => {
+        document.getElementById('view-depot-boutique-btn')?.classList.add('active'); document.getElementById('view-depot-vendu-btn')?.classList.remove('active');
+        document.getElementById('depot-boutique-view')?.classList.remove('hidden'); document.getElementById('depot-vendu-view')?.classList.add('hidden');
+    });
+    bindClick('view-depot-vendu-btn', () => {
+        document.getElementById('view-depot-vendu-btn')?.classList.add('active'); document.getElementById('view-depot-boutique-btn')?.classList.remove('active');
+        document.getElementById('depot-vendu-view')?.classList.remove('hidden'); document.getElementById('depot-boutique-view')?.classList.add('hidden');
+    });
+
     // Événements Clients & Prestations
     bindClick('view-clients-list-btn', () => {
         document.getElementById('view-clients-list-btn')?.classList.add('active'); document.getElementById('view-prestations-kanban-btn')?.classList.remove('active');
@@ -218,6 +228,15 @@ async function initializeApp() {
     });
 
     if(els.grid) els.grid.addEventListener('click', handleGridClick);
+
+    // Initialisation dynamique formulaire Ajout Dépôt-Vente
+    const isDepotSelect = document.getElementById('is-depot-vente');
+    const depGroup = document.getElementById('depositaire-group');
+    if (isDepotSelect && depGroup) {
+        isDepotSelect.addEventListener('change', (e) => {
+            depGroup.style.display = e.target.value === 'Oui' ? 'block' : 'none';
+        });
+    }
 
     setupSaleForms(); setupExpenseForms(); setupProjectEvents(); setupTheme(); setupClientEvents(); setupPrestationEvents(); setupAgendaEvents();
 
@@ -245,21 +264,11 @@ function setupClientEvents() {
         clientForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const editId = document.getElementById('client-edit-id')?.value;
-            const clientObj = [
-                editId || Date.now().toString(), document.getElementById('client-name')?.value || '', document.getElementById('client-contact')?.value || '', document.getElementById('client-mensurations')?.value || '', document.getElementById('client-notes')?.value || ''
-            ];
+            const clientObj = [ editId || Date.now().toString(), document.getElementById('client-name')?.value || '', document.getElementById('client-contact')?.value || '', document.getElementById('client-mensurations')?.value || '', document.getElementById('client-notes')?.value || '' ];
             await ensureClientsSheetExists();
-            if (editId) {
-                const existing = state.clients.find(c => c.id === editId);
-                if (existing) await googleApiManager.updateRow(state.currentSpreadsheetId, `${CLIENTS_SHEET_NAME}!A${existing.rowIndex}:E${existing.rowIndex}`, clientObj);
-            } else { await googleApiManager.appendRow(state.currentSpreadsheetId, `${CLIENTS_SHEET_NAME}!A:E`, clientObj); }
-            
-            document.getElementById('client-modal').style.display = 'none'; 
-            showNotification("Client enregistré !", "success"); 
-            
-            await preloadAllDataInBackground();
-            renderClientsList();
-            renderPrestationsKanban();
+            if (editId) { const existing = state.clients.find(c => c.id === editId); if (existing) await googleApiManager.updateRow(state.currentSpreadsheetId, `${CLIENTS_SHEET_NAME}!A${existing.rowIndex}:E${existing.rowIndex}`, clientObj); } else { await googleApiManager.appendRow(state.currentSpreadsheetId, `${CLIENTS_SHEET_NAME}!A:E`, clientObj); }
+            document.getElementById('client-modal').style.display = 'none'; showNotification("Client enregistré !", "success"); 
+            await preloadAllDataInBackground(); renderClientsList(); renderPrestationsKanban();
         });
     }
 }
@@ -288,13 +297,7 @@ window.deleteClient = async function(id) {
     const c = state.clients.find(x => x.id === id); if(!c) return;
     if (await showFMRConfirm(`Supprimer définitivement le client ${c.name} ?`)) {
         const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); const sheetObj = sheetDetails.sheets.find(s => s.properties.title === CLIENTS_SHEET_NAME);
-        if (sheetObj) { 
-            await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, c.rowIndex); 
-            showNotification("Client supprimé !", "info"); 
-            await preloadAllDataInBackground(); 
-            renderClientsList();
-            renderPrestationsKanban();
-        }
+        if (sheetObj) { await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, c.rowIndex); showNotification("Client supprimé !", "info"); await preloadAllDataInBackground(); renderClientsList(); renderPrestationsKanban(); }
     }
 };
 
@@ -302,10 +305,8 @@ function setupPrestationEvents() {
     const addPrestBtn = document.getElementById('add-prestation-btn');
     if (addPrestBtn) {
         addPrestBtn.addEventListener('click', () => {
-            document.getElementById('prest-edit-id').value = ''; 
-            document.getElementById('prestation-form').reset();
-            document.getElementById('prest-payment-method-group').style.display = 'none';
-            document.getElementById('prest-custom-fields').classList.add('hidden');
+            document.getElementById('prest-edit-id').value = ''; document.getElementById('prestation-form').reset();
+            document.getElementById('prest-payment-method-group').style.display = 'none'; document.getElementById('prest-custom-fields').classList.add('hidden');
             const sel = document.getElementById('prest-client'); sel.innerHTML = '<option value="">-- Sélectionner un client --</option>';
             state.clients.forEach(c => { const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.name; sel.appendChild(opt); });
             const modal = document.getElementById('prestation-modal'); if(modal) modal.style.display = 'block';
@@ -313,96 +314,31 @@ function setupPrestationEvents() {
     }
 
     const prestTypeSelect = document.getElementById('prest-type');
-    if (prestTypeSelect) {
-        prestTypeSelect.addEventListener('change', (e) => {
-            const customGroup = document.getElementById('prest-custom-fields');
-            if (e.target.value === 'Personnalisation' || e.target.value === 'Retouche') {
-                customGroup.classList.remove('hidden');
-            } else {
-                customGroup.classList.add('hidden');
-            }
-        });
-    }
-
+    if (prestTypeSelect) { prestTypeSelect.addEventListener('change', (e) => { const customGroup = document.getElementById('prest-custom-fields'); if (e.target.value === 'Personnalisation' || e.target.value === 'Retouche') { customGroup.classList.remove('hidden'); } else { customGroup.classList.add('hidden'); } }); }
     const prestPaiementSelect = document.getElementById('prest-paiement');
-    if (prestPaiementSelect) {
-        prestPaiementSelect.addEventListener('change', (e) => {
-            const group = document.getElementById('prest-payment-method-group');
-            if (e.target.value === 'Payé') group.style.display = 'block';
-            else group.style.display = 'none';
-        });
-    }
+    if (prestPaiementSelect) { prestPaiementSelect.addEventListener('change', (e) => { const group = document.getElementById('prest-payment-method-group'); if (e.target.value === 'Payé') group.style.display = 'block'; else group.style.display = 'none'; }); }
 
     const prestForm = document.getElementById('prestation-form');
     if (prestForm) {
         prestForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const editId = document.getElementById('prest-edit-id')?.value;
-            const paiementStatus = document.getElementById('prest-paiement')?.value || 'Non payé';
-            const prixVal = document.getElementById('prest-prix')?.value || '0';
-            const typePrest = document.getElementById('prest-type')?.value || 'Standard';
-            
-            const prestObj = [
-                editId || Date.now().toString(), 
-                document.getElementById('prest-client')?.value || '', 
-                new Date().toLocaleDateString('fr-FR'), 
-                document.getElementById('prest-demande')?.value || '', 
-                document.getElementById('prest-status')?.value || 'À traiter', 
-                prixVal, 
-                document.getElementById('prest-avancement')?.value || '',
-                paiementStatus,
-                typePrest,
-                document.getElementById('prest-photo')?.value || '',
-                document.getElementById('prest-modifications')?.value || '',
-                document.getElementById('prest-mesures')?.value || ''
-            ];
+            const editId = document.getElementById('prest-edit-id')?.value; const paiementStatus = document.getElementById('prest-paiement')?.value || 'Non payé'; const prixVal = document.getElementById('prest-prix')?.value || '0'; const typePrest = document.getElementById('prest-type')?.value || 'Standard';
+            const prestObj = [ editId || Date.now().toString(), document.getElementById('prest-client')?.value || '', new Date().toLocaleDateString('fr-FR'), document.getElementById('prest-demande')?.value || '', document.getElementById('prest-status')?.value || 'À traiter', prixVal, document.getElementById('prest-avancement')?.value || '', paiementStatus, typePrest, document.getElementById('prest-photo')?.value || '', document.getElementById('prest-modifications')?.value || '', document.getElementById('prest-mesures')?.value || '' ];
 
             await ensurePrestationsSheetExists();
-
             let addToCompta = false;
             if (editId) {
                 const existing = state.prestations.find(p => p.id === editId);
-                if (existing) {
-                    if (existing.paiement !== 'Payé' && paiementStatus === 'Payé') { addToCompta = true; }
-                    await googleApiManager.updateRow(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!A${existing.rowIndex}:L${existing.rowIndex}`, prestObj);
-                }
-            } else { 
-                if (paiementStatus === 'Payé') { addToCompta = true; }
-                await googleApiManager.appendRow(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!A:L`, prestObj); 
-            }
+                if (existing) { if (existing.paiement !== 'Payé' && paiementStatus === 'Payé') { addToCompta = true; } await googleApiManager.updateRow(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!A${existing.rowIndex}:L${existing.rowIndex}`, prestObj); }
+            } else { if (paiementStatus === 'Payé') { addToCompta = true; } await googleApiManager.appendRow(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!A:L`, prestObj); }
 
             if (addToCompta) {
-                const ttc = parsePrice(prixVal);
-                const ht = (ttc / 1.20).toFixed(2);
-                const tva = (ttc - (ttc / 1.20)).toFixed(2);
-                const paymentMethod = document.getElementById('prest-payment-method')?.value || 'Carte';
-                const clientId = document.getElementById('prest-client')?.value;
-                const clientObj = state.clients.find(c => c.id === clientId);
-                const clientName = clientObj ? clientObj.name : 'Client inconnu';
-
-                const comptaRow = [
-                    new Date().toLocaleString('fr-FR'),
-                    "Prestation / Sur-mesure",
-                    "-",
-                    document.getElementById('prest-demande')?.value || 'Prestation',
-                    ttc.toFixed(2),
-                    ht,
-                    tva,
-                    paymentMethod,
-                    "Prestation de Service",
-                    `Client: ${clientName}`,
-                    "{}",
-                    "VALID"
-                ];
-                await ensureComptaSheetExists();
-                await googleApiManager.appendRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!A:L`, comptaRow);
+                const ttc = parsePrice(prixVal); const ht = (ttc / 1.20).toFixed(2); const tva = (ttc - (ttc / 1.20)).toFixed(2); const paymentMethod = document.getElementById('prest-payment-method')?.value || 'Carte'; const clientId = document.getElementById('prest-client')?.value; const clientObj = state.clients.find(c => c.id === clientId); const clientName = clientObj ? clientObj.name : 'Client inconnu';
+                const comptaRow = [ new Date().toLocaleString('fr-FR'), "Prestation / Sur-mesure", "-", document.getElementById('prest-demande')?.value || 'Prestation', ttc.toFixed(2), ht, tva, paymentMethod, "Prestation de Service", `Client: ${clientName}`, "{}", "VALID" ];
+                await ensureComptaSheetExists(); await googleApiManager.appendRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!A:L`, comptaRow);
             }
 
-            document.getElementById('prestation-modal').style.display = 'none'; 
-            showNotification("Prestation enregistrée !", "success"); 
-            
-            await preloadAllDataInBackground();
-            renderPrestationsKanban();
+            document.getElementById('prestation-modal').style.display = 'none'; showNotification("Prestation enregistrée !", "success"); await preloadAllDataInBackground(); renderPrestationsKanban();
         });
     }
 }
@@ -413,9 +349,7 @@ window.handlePrestDrop = async function(e, targetStatus) {
     const data = e.dataTransfer.getData('application/json'); if (!data) return;
     const parsed = JSON.parse(data); if (parsed.type !== 'prestation') return;
     const prest = state.prestations.find(p => p.id == parsed.id);
-    if(prest && prest.status !== targetStatus) {
-        prest.status = targetStatus; await googleApiManager.updateRow(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!E${prest.rowIndex}`, [targetStatus]); renderPrestationsKanban();
-    }
+    if(prest && prest.status !== targetStatus) { prest.status = targetStatus; await googleApiManager.updateRow(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!E${prest.rowIndex}`, [targetStatus]); renderPrestationsKanban(); }
 };
 
 function renderPrestationsKanban() {
@@ -426,40 +360,13 @@ function renderPrestationsKanban() {
         if (col) {
             const client = state.clients.find(c => c.id === p.clientId); const clientName = client ? client.name : 'Client inconnu';
             const card = document.createElement('div'); card.className = 'kanban-card'; card.draggable = true; card.ondragstart = (e) => handlePrestDragStart(e, p.id); card.ondragend = handleDragEnd;
-            
-            const paiementBadge = p.paiement === 'Payé' 
-                ? `<span style="background:var(--success); color:white; padding:3px 6px; border-radius:6px; font-size:0.7rem; font-weight:700;"><i class="fas fa-check"></i> Payé</span>`
-                : `<span style="background:var(--danger); color:white; padding:3px 6px; border-radius:6px; font-size:0.7rem; font-weight:700;"><i class="fas fa-times"></i> Non payé</span>`;
-
+            const paiementBadge = p.paiement === 'Payé' ? `<span style="background:var(--success); color:white; padding:3px 6px; border-radius:6px; font-size:0.7rem; font-weight:700;"><i class="fas fa-check"></i> Payé</span>` : `<span style="background:var(--danger); color:white; padding:3px 6px; border-radius:6px; font-size:0.7rem; font-weight:700;"><i class="fas fa-times"></i> Non payé</span>`;
             let customHtml = '';
             if (p.typePrest === 'Personnalisation' || p.typePrest === 'Retouche') {
                 let imgHtml = p.photoPiece ? `<img src="${convertDriveImage(p.photoPiece)}" style="width:100%; height:120px; object-fit:cover; border-radius:6px; margin-bottom:8px;" alt="Pièce originale">` : '';
-                customHtml = `
-                    <div style="background:var(--light); padding:8px; border-radius:6px; margin-top:8px; border: 1px dashed var(--border-color); font-size:0.8rem;">
-                        ${imgHtml}
-                        <strong style="color:var(--secondary);"><i class="fas fa-cut"></i> ${p.typePrest}</strong>
-                        ${p.modifications ? `<div style="margin-top:4px;"><strong>Modifs:</strong> ${p.modifications}</div>` : ''}
-                        ${p.mesures ? `<div style="margin-top:4px;"><strong>Mesures:</strong> ${p.mesures}</div>` : ''}
-                    </div>
-                `;
+                customHtml = `<div style="background:var(--light); padding:8px; border-radius:6px; margin-top:8px; border: 1px dashed var(--border-color); font-size:0.8rem;">${imgHtml}<strong style="color:var(--secondary);"><i class="fas fa-cut"></i> ${p.typePrest}</strong>${p.modifications ? `<div style="margin-top:4px;"><strong>Modifs:</strong> ${p.modifications}</div>` : ''}${p.mesures ? `<div style="margin-top:4px;"><strong>Mesures:</strong> ${p.mesures}</div>` : ''}</div>`;
             }
-
-            card.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div class="kanban-card-title"><i class="fas fa-user-circle"></i> ${clientName}</div>
-                    <span class="priority-tag priority-Moyenne">${p.prix ? p.prix+'€' : '-'}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-                    <div style="font-size:0.8rem; color:var(--gray);"><i class="fas fa-calendar"></i> ${p.date}</div>
-                    ${paiementBadge}
-                </div>
-                <div style="font-size:0.85rem; color:var(--dark); font-weight:600; margin-top:8px;">${p.demande}</div>
-                ${customHtml}
-                ${p.avancement ? `<div style="font-size:0.8rem; background:var(--light); padding:6px; border-radius:6px; margin-top:6px;"><i>Avancement :</i> ${p.avancement}</div>` : ''}
-                <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:5px; border-top:1px solid var(--border-color); padding-top:8px;">
-                    <button class="btn btn-secondary" onclick="editPrestation('${p.id}')" style="padding:4px 8px; font-size:11px;" title="Modifier"><i class="fas fa-pen"></i></button>
-                    <button class="btn btn-secondary" onclick="deletePrestation('${p.id}')" style="padding:4px 8px; font-size:11px;" title="Supprimer"><i class="fas fa-trash"></i></button>
-                </div>`;
+            card.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center;"><div class="kanban-card-title"><i class="fas fa-user-circle"></i> ${clientName}</div><span class="priority-tag priority-Moyenne">${p.prix ? p.prix+'€' : '-'}</span></div><div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;"><div style="font-size:0.8rem; color:var(--gray);"><i class="fas fa-calendar"></i> ${p.date}</div>${paiementBadge}</div><div style="font-size:0.85rem; color:var(--dark); font-weight:600; margin-top:8px;">${p.demande}</div>${customHtml}${p.avancement ? `<div style="font-size:0.8rem; background:var(--light); padding:6px; border-radius:6px; margin-top:6px;"><i>Avancement :</i> ${p.avancement}</div>` : ''}<div style="display:flex; justify-content:flex-end; gap:6px; margin-top:5px; border-top:1px solid var(--border-color); padding-top:8px;"><button class="btn btn-secondary" onclick="editPrestation('${p.id}')" style="padding:4px 8px; font-size:11px;" title="Modifier"><i class="fas fa-pen"></i></button><button class="btn btn-secondary" onclick="deletePrestation('${p.id}')" style="padding:4px 8px; font-size:11px;" title="Supprimer"><i class="fas fa-trash"></i></button></div>`;
             col.appendChild(card);
         }
     });
@@ -468,35 +375,15 @@ function renderPrestationsKanban() {
 
 window.editPrestation = function(id) {
     const p = state.prestations.find(x => x.id === id); if(!p) return;
-    document.getElementById('prest-edit-id').value = p.id; 
-    document.getElementById('prest-demande').value = p.demande; 
-    document.getElementById('prest-status').value = p.status; 
-    document.getElementById('prest-prix').value = p.prix; 
-    document.getElementById('prest-avancement').value = p.avancement;
-    document.getElementById('prest-paiement').value = p.paiement || 'Non payé';
-    document.getElementById('prest-payment-method-group').style.display = (p.paiement === 'Payé') ? 'block' : 'none';
-    
-    document.getElementById('prest-type').value = p.typePrest || 'Standard';
-    document.getElementById('prest-photo').value = p.photoPiece || '';
-    document.getElementById('prest-modifications').value = p.modifications || '';
-    document.getElementById('prest-mesures').value = p.mesures || '';
-    document.getElementById('prest-type').dispatchEvent(new Event('change'));
-
-    const sel = document.getElementById('prest-client'); sel.innerHTML = '<option value="">-- Sélectionner un client --</option>';
-    state.clients.forEach(c => { const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.name; if(c.id === p.clientId) opt.selected = true; sel.appendChild(opt); });
-    document.getElementById('prestation-modal').style.display = 'block';
+    document.getElementById('prest-edit-id').value = p.id; document.getElementById('prest-demande').value = p.demande; document.getElementById('prest-status').value = p.status; document.getElementById('prest-prix').value = p.prix; document.getElementById('prest-avancement').value = p.avancement; document.getElementById('prest-paiement').value = p.paiement || 'Non payé'; document.getElementById('prest-payment-method-group').style.display = (p.paiement === 'Payé') ? 'block' : 'none'; document.getElementById('prest-type').value = p.typePrest || 'Standard'; document.getElementById('prest-photo').value = p.photoPiece || ''; document.getElementById('prest-modifications').value = p.modifications || ''; document.getElementById('prest-mesures').value = p.mesures || ''; document.getElementById('prest-type').dispatchEvent(new Event('change'));
+    const sel = document.getElementById('prest-client'); sel.innerHTML = '<option value="">-- Sélectionner un client --</option>'; state.clients.forEach(c => { const opt = document.createElement('option'); opt.value = c.id; opt.textContent = c.name; if(c.id === p.clientId) opt.selected = true; sel.appendChild(opt); }); document.getElementById('prestation-modal').style.display = 'block';
 };
 
 window.deletePrestation = async function(id) {
     const p = state.prestations.find(x => x.id === id); if(!p) return;
     if (await showFMRConfirm(`Supprimer cette demande ?`)) {
         const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); const sheetObj = sheetDetails.sheets.find(s => s.properties.title === PRESTATIONS_SHEET_NAME);
-        if (sheetObj) { 
-            await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, p.rowIndex); 
-            showNotification("Demande supprimée !", "info"); 
-            await preloadAllDataInBackground();
-            renderPrestationsKanban();
-        }
+        if (sheetObj) { await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, p.rowIndex); showNotification("Demande supprimée !", "info"); await preloadAllDataInBackground(); renderPrestationsKanban(); }
     }
 };
 
@@ -504,210 +391,48 @@ window.deletePrestation = async function(id) {
 
 async function ensureAgendaSheetExists() {
     const details = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); if (!details) return;
-    if (!details.sheets.some(s => s.properties.title === AGENDA_SHEET_NAME)) { 
-        await googleApiManager.addSheet(state.currentSpreadsheetId, AGENDA_SHEET_NAME); 
-        await googleApiManager.appendRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A1:F1`, AGENDA_HEADERS); 
-    }
+    if (!details.sheets.some(s => s.properties.title === AGENDA_SHEET_NAME)) { await googleApiManager.addSheet(state.currentSpreadsheetId, AGENDA_SHEET_NAME); await googleApiManager.appendRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A1:F1`, AGENDA_HEADERS); }
 }
 
 function setupAgendaEvents() {
     const addAgendaBtn = document.getElementById('add-agenda-btn');
-    if (addAgendaBtn) {
-        addAgendaBtn.addEventListener('click', () => {
-            document.getElementById('agenda-edit-id').value = '';
-            document.getElementById('agenda-form').reset();
-            document.getElementById('agenda-delete-btn-container').style.display = 'none';
-            const modal = document.getElementById('agenda-modal');
-            if(modal) modal.style.display = 'block';
-        });
-    }
-
+    if (addAgendaBtn) { addAgendaBtn.addEventListener('click', () => { document.getElementById('agenda-edit-id').value = ''; document.getElementById('agenda-form').reset(); document.getElementById('agenda-delete-btn-container').style.display = 'none'; const modal = document.getElementById('agenda-modal'); if(modal) modal.style.display = 'block'; }); }
     const agendaForm = document.getElementById('agenda-form');
     if (agendaForm) {
         agendaForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const editId = document.getElementById('agenda-edit-id')?.value;
-            const agObj = [
-                editId || Date.now().toString(), 
-                document.getElementById('agenda-title')?.value || '', 
-                document.getElementById('agenda-start')?.value || '', 
-                document.getElementById('agenda-end')?.value || '', 
-                document.getElementById('agenda-type')?.value || 'Autre', 
-                document.getElementById('agenda-desc')?.value || ''
-            ];
-
+            e.preventDefault(); const editId = document.getElementById('agenda-edit-id')?.value; const agObj = [ editId || Date.now().toString(), document.getElementById('agenda-title')?.value || '', document.getElementById('agenda-start')?.value || '', document.getElementById('agenda-end')?.value || '', document.getElementById('agenda-type')?.value || 'Autre', document.getElementById('agenda-desc')?.value || '' ];
             await ensureAgendaSheetExists();
-            if (editId) {
-                const existing = state.agenda.find(a => a.id === editId);
-                if (existing) await googleApiManager.updateRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A${existing.rowIndex}:F${existing.rowIndex}`, agObj);
-            } else { 
-                await googleApiManager.appendRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A:F`, agObj); 
-            }
-            
-            document.getElementById('agenda-modal').style.display = 'none'; 
-            showNotification("Événement enregistré !", "success"); 
-            await preloadAllDataInBackground();
-            initCalendar(); // Rafraîchir l'agenda
+            if (editId) { const existing = state.agenda.find(a => a.id === editId); if (existing) await googleApiManager.updateRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A${existing.rowIndex}:F${existing.rowIndex}`, agObj); } else { await googleApiManager.appendRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A:F`, agObj); }
+            document.getElementById('agenda-modal').style.display = 'none'; showNotification("Événement enregistré !", "success"); await preloadAllDataInBackground(); initCalendar();
         });
     }
 }
 
 window.deleteAgendaEvent = async function() {
-    const id = document.getElementById('agenda-edit-id').value;
-    const ag = state.agenda.find(x => x.id === id); 
-    if(!ag) return;
-    
+    const id = document.getElementById('agenda-edit-id').value; const ag = state.agenda.find(x => x.id === id); if(!ag) return;
     if (await showFMRConfirm(`Supprimer l'événement "${ag.title}" ?`)) {
-        const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); 
-        const sheetObj = sheetDetails.sheets.find(s => s.properties.title === AGENDA_SHEET_NAME);
-        if (sheetObj) { 
-            await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, ag.rowIndex); 
-            showNotification("Événement supprimé !", "info"); 
-            document.getElementById('agenda-modal').style.display = 'none'; 
-            await preloadAllDataInBackground();
-            initCalendar();
-        }
+        const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); const sheetObj = sheetDetails.sheets.find(s => s.properties.title === AGENDA_SHEET_NAME);
+        if (sheetObj) { await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, ag.rowIndex); showNotification("Événement supprimé !", "info"); document.getElementById('agenda-modal').style.display = 'none'; await preloadAllDataInBackground(); initCalendar(); }
     }
 };
 
 function initCalendar() {
-    const calendarEl = document.getElementById('calendar');
-    if (!calendarEl || !window.FullCalendar) return;
-
-    if (calendarInstance) {
-        calendarInstance.destroy();
-    }
-
-    const events = [];
-
-    // 1. Ajouter les Projets (Deadlines)
-    state.projects.forEach(p => {
-        if (p.status !== 'Publié' && p.end) {
-            events.push({
-                id: 'proj_' + p.id,
-                title: '📌 [Projet] ' + p.name,
-                start: p.end,
-                allDay: true,
-                backgroundColor: 'var(--primary)',
-                borderColor: 'var(--primary)'
-            });
-        }
-    });
-
-    // 2. Ajouter les Prestations
-    state.prestations.forEach(p => {
-        if (p.status !== 'Terminé' && p.date) {
-            // Conversion DD/MM/YYYY en YYYY-MM-DD
-            const parts = p.date.split('/');
-            if(parts.length === 3) {
-                const isoDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
-                const client = state.clients.find(c => c.id === p.clientId);
-                const cName = client ? client.name : '';
-                events.push({
-                    id: 'prest_' + p.id,
-                    title: '✂️ [Presta] ' + cName,
-                    start: isoDate,
-                    allDay: true,
-                    backgroundColor: 'var(--info)',
-                    borderColor: 'var(--info)'
-                });
-            }
-        }
-    });
-
-    // 3. Ajouter les événements de l'Agenda
-    state.agenda.forEach(a => {
-        let color = 'var(--success)';
-        if (a.type === 'Rappel') color = 'var(--danger)';
-        if (a.type === 'Tâche') color = 'var(--gray)';
-
-        events.push({
-            id: 'agenda_' + a.id,
-            title: a.title,
-            start: a.start,
-            end: a.end || a.start,
-            allDay: true,
-            backgroundColor: color,
-            borderColor: color
-        });
-    });
-
-    calendarInstance = new FullCalendar.Calendar(calendarEl, {
-        locale: 'fr',
-        initialView: 'dayGridMonth',
-        headerToolbar: {
-            left: 'prev,next today',
-            center: 'title',
-            right: 'dayGridMonth,timeGridWeek,timeGridDay'
-        },
-        buttonText: {
-            today: "Aujourd'hui",
-            month: 'Mois',
-            week: 'Semaine',
-            day: 'Jour'
-        },
-        events: events,
-        height: 'auto',
-        dateClick: function(info) {
-            document.getElementById('agenda-edit-id').value = '';
-            document.getElementById('agenda-form').reset();
-            document.getElementById('agenda-delete-btn-container').style.display = 'none';
-            document.getElementById('agenda-start').value = info.dateStr;
-            const modal = document.getElementById('agenda-modal');
-            if(modal) modal.style.display = 'block';
-        },
-        eventClick: function(info) {
-            const evId = info.event.id;
-            if (evId.startsWith('proj_')) {
-                openProjectDetailsModal(evId.replace('proj_', ''));
-            } else if (evId.startsWith('prest_')) {
-                editPrestation(evId.replace('prest_', ''));
-            } else if (evId.startsWith('agenda_')) {
-                const agId = evId.replace('agenda_', '');
-                const ag = state.agenda.find(x => x.id === agId);
-                if (ag) {
-                    document.getElementById('agenda-edit-id').value = ag.id;
-                    document.getElementById('agenda-title').value = ag.title;
-                    document.getElementById('agenda-start').value = ag.start;
-                    document.getElementById('agenda-end').value = ag.end || '';
-                    document.getElementById('agenda-type').value = ag.type || 'Autre';
-                    document.getElementById('agenda-desc').value = ag.desc || '';
-                    document.getElementById('agenda-delete-btn-container').style.display = 'block';
-                    document.getElementById('agenda-modal').style.display = 'block';
-                }
-            }
-        }
-    });
-
-    calendarInstance.render();
+    const calendarEl = document.getElementById('calendar'); if (!calendarEl || !window.FullCalendar) return; if (calendarInstance) calendarInstance.destroy(); const events = [];
+    state.projects.forEach(p => { if (p.status !== 'Publié' && p.end) { events.push({ id: 'proj_' + p.id, title: '📌 [Projet] ' + p.name, start: p.end, allDay: true, backgroundColor: 'var(--primary)', borderColor: 'var(--primary)' }); } });
+    state.prestations.forEach(p => { if (p.status !== 'Terminé' && p.date) { const parts = p.date.split('/'); if(parts.length === 3) { const isoDate = `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`; const client = state.clients.find(c => c.id === p.clientId); const cName = client ? client.name : ''; events.push({ id: 'prest_' + p.id, title: '✂️ [Presta] ' + cName, start: isoDate, allDay: true, backgroundColor: 'var(--info)', borderColor: 'var(--info)' }); } } });
+    state.agenda.forEach(a => { let color = 'var(--success)'; if (a.type === 'Rappel') color = 'var(--danger)'; if (a.type === 'Tâche') color = 'var(--gray)'; events.push({ id: 'agenda_' + a.id, title: a.title, start: a.start, end: a.end || a.start, allDay: true, backgroundColor: color, borderColor: color }); });
+    calendarInstance = new FullCalendar.Calendar(calendarEl, { locale: 'fr', initialView: 'dayGridMonth', headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }, buttonText: { today: "Aujourd'hui", month: 'Mois', week: 'Semaine', day: 'Jour' }, events: events, height: 'auto', dateClick: function(info) { document.getElementById('agenda-edit-id').value = ''; document.getElementById('agenda-form').reset(); document.getElementById('agenda-delete-btn-container').style.display = 'none'; document.getElementById('agenda-start').value = info.dateStr; const modal = document.getElementById('agenda-modal'); if(modal) modal.style.display = 'block'; }, eventClick: function(info) { const evId = info.event.id; if (evId.startsWith('proj_')) { openProjectDetailsModal(evId.replace('proj_', '')); } else if (evId.startsWith('prest_')) { editPrestation(evId.replace('prest_', '')); } else if (evId.startsWith('agenda_')) { const agId = evId.replace('agenda_', ''); const ag = state.agenda.find(x => x.id === agId); if (ag) { document.getElementById('agenda-edit-id').value = ag.id; document.getElementById('agenda-title').value = ag.title; document.getElementById('agenda-start').value = ag.start; document.getElementById('agenda-end').value = ag.end || ''; document.getElementById('agenda-type').value = ag.type || 'Autre'; document.getElementById('agenda-desc').value = ag.desc || ''; document.getElementById('agenda-delete-btn-container').style.display = 'block'; document.getElementById('agenda-modal').style.display = 'block'; } } } }); calendarInstance.render();
 }
 
 // --- FORMULAIRES DE VENTE ---
 function setupSaleForms() {
-    const saleModal = document.getElementById('sale-product-modal');
-    const salePriceInput = document.getElementById('sale-price');
-    const transTypeSelect = document.getElementById('sale-trans-type');
-    const paymentMethodSelect = document.getElementById('sale-payment-method');
-
+    const saleModal = document.getElementById('sale-product-modal'); const salePriceInput = document.getElementById('sale-price'); const transTypeSelect = document.getElementById('sale-trans-type'); const paymentMethodSelect = document.getElementById('sale-payment-method');
     const updateCalculations = () => {
-        if (!salePriceInput) return;
-        const ttc = parsePrice(salePriceInput.value);
-        const transType = transTypeSelect ? transTypeSelect.value : 'B2C';
-        let ht = 0, tva = 0;
-
-        if (transType === 'DEPOT') {
-            const ownerDue = parsePrice(document.getElementById('depot-owner-due')?.value); const storeCommissionTTC = Math.max(0, ttc - ownerDue);
-            const commissionHT = storeCommissionTTC / 1.20; tva = storeCommissionTTC - commissionHT; ht = commissionHT;
-            const elGain = document.getElementById('depot-store-gain'); if (elGain) elGain.value = storeCommissionTTC.toFixed(2);
-        } else if (transType === 'B2B') { ht = ttc; tva = 0; } else { ht = ttc / 1.20; tva = ttc - ht; }
-
+        if (!salePriceInput) return; const ttc = parsePrice(salePriceInput.value); const transType = transTypeSelect ? transTypeSelect.value : 'B2C'; let ht = 0, tva = 0;
+        if (transType === 'DEPOT') { const ownerDue = parsePrice(document.getElementById('depot-owner-due')?.value); const storeCommissionTTC = Math.max(0, ttc - ownerDue); const commissionHT = storeCommissionTTC / 1.20; tva = storeCommissionTTC - commissionHT; ht = commissionHT; const elGain = document.getElementById('depot-store-gain'); if (elGain) elGain.value = storeCommissionTTC.toFixed(2); } else if (transType === 'B2B') { ht = ttc; tva = 0; } else { ht = ttc / 1.20; tva = ttc - ht; }
         const elTTC = document.getElementById('sale-calc-ttc'); const elHT = document.getElementById('sale-calc-ht'); const elTVA = document.getElementById('sale-calc-tva');
         if (elTTC) elTTC.textContent = ttc.toFixed(2) + ' €'; if (elHT) elHT.textContent = ht.toFixed(2) + ' €'; if (elTVA) elTVA.textContent = tva.toFixed(2) + ' €';
-
-        if (paymentMethodSelect && paymentMethodSelect.value === 'Différé') {
-            const paid = parsePrice(document.getElementById('diff-paid')?.value); const elRest = document.getElementById('diff-rest');
-            if (elRest) elRest.value = Math.max(0, ttc - paid).toFixed(2);
-        }
+        if (paymentMethodSelect && paymentMethodSelect.value === 'Différé') { const paid = parsePrice(document.getElementById('diff-paid')?.value); const elRest = document.getElementById('diff-rest'); if (elRest) elRest.value = Math.max(0, ttc - paid).toFixed(2); }
     };
 
     if (saleModal) { saleModal.addEventListener('input', (e) => { if (e.target && (e.target.id === 'sale-price' || e.target.id === 'diff-paid' || e.target.id === 'depot-owner-due')) { updateCalculations(); } }); }
@@ -717,32 +442,17 @@ function setupSaleForms() {
     const saleForm = document.getElementById('sale-product-form');
     if (saleForm) {
         saleForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const submitBtn = saleForm.querySelector('button[type="submit"]'); const originalBtnHtml = submitBtn ? submitBtn.innerHTML : ''; if (submitBtn) { submitBtn.classList.add('btn-success-check'); submitBtn.innerHTML = '<i class="fas fa-check"></i> Vente validée !'; }
-            const rowIdx = parseInt(document.getElementById('sale-product-row-idx').value, 10); const productData = JSON.parse(document.getElementById('sale-product-details').value || '{}'); const ttc = parsePrice(salePriceInput.value); const payment = paymentMethodSelect.value; const transType = transTypeSelect.value; const linkedProjectId = document.getElementById('sale-project-link')?.value || '';
-            let ht = 0, tva = 0, detailsSpecifiques = "", clientOrCompany = "Client Particulier";
-
-            if (transType === 'DEPOT') {
-                const owner = document.getElementById('depot-owner-name')?.value.trim() || 'Inconnu'; const due = parsePrice(document.getElementById('depot-owner-due')?.value); const commissionTTC = Math.max(0, ttc - due); ht = (commissionTTC / 1.20).toFixed(2); tva = (commissionTTC - (commissionTTC / 1.20)).toFixed(2); detailsSpecifiques += `[Dépôt: Dépositaire ${owner} | Dû: ${due.toFixed(2)}€ | Com Boutique TTC: ${commissionTTC.toFixed(2)}€] [STATUT_DEPOT: EN_ATTENTE] `; clientOrCompany = `Dépositaire: ${owner}`;
-            } else if (transType === 'B2B') { ht = ttc.toFixed(2); tva = (0).toFixed(2); const company = document.getElementById('b2b-company-name')?.value.trim() || ''; detailsSpecifiques += `[B2B - Hors TVA: Sté ${company}] `; clientOrCompany = company; } 
-            else { ht = (ttc / 1.20).toFixed(2); tva = (ttc - (ttc / 1.20)).toFixed(2); }
-
+            e.preventDefault(); const submitBtn = saleForm.querySelector('button[type="submit"]'); const originalBtnHtml = submitBtn ? submitBtn.innerHTML : ''; if (submitBtn) { submitBtn.classList.add('btn-success-check'); submitBtn.innerHTML = '<i class="fas fa-check"></i> Vente validée !'; }
+            const rowIdx = parseInt(document.getElementById('sale-product-row-idx').value, 10); const productData = JSON.parse(document.getElementById('sale-product-details').value || '{}'); const ttc = parsePrice(salePriceInput.value); const payment = paymentMethodSelect.value; const transType = transTypeSelect.value; const linkedProjectId = document.getElementById('sale-project-link')?.value || ''; let ht = 0, tva = 0, detailsSpecifiques = "", clientOrCompany = "Client Particulier";
+            if (transType === 'DEPOT') { const owner = document.getElementById('depot-owner-name')?.value.trim() || 'Inconnu'; const due = parsePrice(document.getElementById('depot-owner-due')?.value); const commissionTTC = Math.max(0, ttc - due); ht = (commissionTTC / 1.20).toFixed(2); tva = (commissionTTC - (commissionTTC / 1.20)).toFixed(2); detailsSpecifiques += `[Dépôt: Dépositaire ${owner} | Dû: ${due.toFixed(2)}€ | Com Boutique TTC: ${commissionTTC.toFixed(2)}€] [STATUT_DEPOT: EN_ATTENTE] `; clientOrCompany = `Dépositaire: ${owner}`; } else if (transType === 'B2B') { ht = ttc.toFixed(2); tva = (0).toFixed(2); const company = document.getElementById('b2b-company-name')?.value.trim() || ''; detailsSpecifiques += `[B2B - Hors TVA: Sté ${company}] `; clientOrCompany = company; } else { ht = (ttc / 1.20).toFixed(2); tva = (ttc - (ttc / 1.20)).toFixed(2); }
             if (payment === 'Différé') { const client = document.getElementById('diff-client-name')?.value.trim() || ''; const paid = parsePrice(document.getElementById('diff-paid')?.value).toFixed(2); const rest = parsePrice(document.getElementById('diff-rest')?.value).toFixed(2); detailsSpecifiques += `[Différé: Client ${client} | Payé: ${paid}€ | Reste dû: ${rest}€] `; clientOrCompany = client; }
             if (linkedProjectId) { detailsSpecifiques += `[ProjetID:${linkedProjectId}] `; }
-
             const refKey = state.headers.find(x => x.toLowerCase().includes('ref') || x.toLowerCase().includes('code')) || ''; const nameKey = state.headers.find(x => x.toLowerCase().includes('nom')) || state.headers[0]; const ref = productData[refKey] || '-'; const name = productData[nameKey] || 'Produit sans nom';
             const comptaRow = [ new Date().toLocaleString('fr-FR'), state.currentSheet ? state.currentSheet.title : 'Stock', ref, name, ttc.toFixed(2), ht, tva, payment, transType, detailsSpecifiques, JSON.stringify(productData), "VALID" ];
 
-            if (!navigator.onLine) {
-                await idbManager.savePendingSale({ action: "soldProduct", originSheetId: state.currentSheet ? state.currentSheet.id : null, rowIdx: rowIdx, comptaRow: comptaRow });
-                setTimeout(() => { document.getElementById('sale-product-modal').style.display = 'none'; if (submitBtn) { submitBtn.classList.remove('btn-success-check'); submitBtn.innerHTML = originalBtnHtml; } }, 600); showNotification("Vente enregistrée en mode HORS-LIGNE !", "info"); generateInvoicePDF({ date: comptaRow[0], ref, name, ttc, ht, tva, payment, transType, client: clientOrCompany }); return;
-            }
-
+            if (!navigator.onLine) { await idbManager.savePendingSale({ action: "soldProduct", originSheetId: state.currentSheet ? state.currentSheet.id : null, rowIdx: rowIdx, comptaRow: comptaRow }); setTimeout(() => { document.getElementById('sale-product-modal').style.display = 'none'; if (submitBtn) { submitBtn.classList.remove('btn-success-check'); submitBtn.innerHTML = originalBtnHtml; } }, 600); showNotification("Vente enregistrée en mode HORS-LIGNE !", "info"); generateInvoicePDF({ date: comptaRow[0], ref, name, ttc, ht, tva, payment, transType, client: clientOrCompany }); return; }
             await ensureComptaSheetExists(); const appendOk = await googleApiManager.appendRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!A:L`, comptaRow);
-            if (appendOk) {
-                if (state.currentSheet) { await googleApiManager.deleteRow(state.currentSpreadsheetId, state.currentSheet.id, rowIdx); }
-                setTimeout(() => { document.getElementById('sale-product-modal').style.display = 'none'; if (submitBtn) { submitBtn.classList.remove('btn-success-check'); submitBtn.innerHTML = originalBtnHtml; } showNotification("Article vendu et déplacé en Comptabilité !", "success"); renderProductList(); }, 600); generateInvoicePDF({ date: comptaRow[0], ref, name, ttc, ht, tva, payment, transType, client: clientOrCompany });
-            } else { if (submitBtn) { submitBtn.classList.remove('btn-success-check'); submitBtn.innerHTML = originalBtnHtml; } showNotification("Erreur lors de l'enregistrement.", "error"); }
+            if (appendOk) { if (state.currentSheet) { await googleApiManager.deleteRow(state.currentSpreadsheetId, state.currentSheet.id, rowIdx); } setTimeout(() => { document.getElementById('sale-product-modal').style.display = 'none'; if (submitBtn) { submitBtn.classList.remove('btn-success-check'); submitBtn.innerHTML = originalBtnHtml; } showNotification("Article vendu et déplacé en Comptabilité !", "success"); renderProductList(); }, 600); generateInvoicePDF({ date: comptaRow[0], ref, name, ttc, ht, tva, payment, transType, client: clientOrCompany }); } else { if (submitBtn) { submitBtn.classList.remove('btn-success-check'); submitBtn.innerHTML = originalBtnHtml; } showNotification("Erreur lors de l'enregistrement.", "error"); }
         });
     }
 
@@ -751,13 +461,77 @@ function setupSaleForms() {
     const directSaleForm = document.getElementById('direct-sale-form');
     if (directSaleForm) {
         directSaleForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const type = document.getElementById('ds-type')?.value || 'Vente Web'; const desc = document.getElementById('ds-desc')?.value || ''; const ttc = parsePrice(document.getElementById('ds-price')?.value); const payment = document.getElementById('ds-payment')?.value || 'Carte'; const client = document.getElementById('ds-client')?.value || 'Client Standard'; const linkedProjectId = document.getElementById('ds-project-link')?.value || '';
+            e.preventDefault(); const type = document.getElementById('ds-type')?.value || 'Vente Web'; const desc = document.getElementById('ds-desc')?.value || ''; const ttc = parsePrice(document.getElementById('ds-price')?.value); const payment = document.getElementById('ds-payment')?.value || 'Carte'; const client = document.getElementById('ds-client')?.value || 'Client Standard'; const linkedProjectId = document.getElementById('ds-project-link')?.value || '';
             const ht = (ttc / 1.20).toFixed(2); const tva = (ttc - (ttc / 1.20)).toFixed(2); let spec = `Client: ${client}`; if (linkedProjectId) spec += ` [ProjetID:${linkedProjectId}]`;
             const comptaRow = [ new Date().toLocaleString('fr-FR'), "Vente Libre", "-", desc, ttc.toFixed(2), ht, tva, payment, type, spec, "{}", "VALID" ];
-
             if (!navigator.onLine) { await idbManager.savePendingSale({ action: "directSale", comptaRow: comptaRow }); document.getElementById('direct-sale-modal').style.display = 'none'; directSaleForm.reset(); showNotification("Vente libre enregistrée en mode HORS-LIGNE !", "info"); generateInvoicePDF({ date: comptaRow[0], ref: '-', name: desc, ttc, ht, tva, payment, transType: type, client }); return; }
             await ensureComptaSheetExists(); if (await googleApiManager.appendRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!A:L`, comptaRow)) { showNotification("Vente enregistrée en comptabilité !", "success"); document.getElementById('direct-sale-modal').style.display = 'none'; directSaleForm.reset(); generateInvoicePDF({ date: comptaRow[0], ref: '-', name: desc, ttc, ht, tva, payment, transType: type, client }); loadComptaData(); }
+        });
+    }
+
+    // Gestion du Formulaire d'Annulation / Retour / Echange
+    const cancelTypeSelect = document.getElementById('cancel-type');
+    const exchFields = document.getElementById('exchange-fields');
+    if(cancelTypeSelect && exchFields) {
+        cancelTypeSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'echange') exchFields.classList.remove('hidden');
+            else exchFields.classList.add('hidden');
+        });
+    }
+
+    const cancelSaleForm = document.getElementById('cancel-sale-form');
+    if (cancelSaleForm) {
+        cancelSaleForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const type = document.getElementById('cancel-type').value;
+            const rowIndex = parseInt(document.getElementById('cancel-row-idx').value, 10);
+            const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex);
+            if (!row) return;
+
+            const originSheet = row[1];
+            const rawJson = row[10];
+            
+            if (type === 'suppression') {
+                const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); 
+                const comptaSheet = sheetDetails.sheets.find(s=>s.properties.title===COMPTA_SHEET_NAME);
+                if(comptaSheet) { await googleApiManager.deleteRow(state.currentSpreadsheetId, comptaSheet.properties.sheetId, rowIndex); showNotification("Ligne supprimée de la compta !", "success"); }
+            } else {
+                if (originSheet && rawJson && rawJson !== "{}") {
+                    const productData = JSON.parse(rawJson);
+                    delete productData.gSheetRowIndex; delete productData.sheetTitle; 
+                    const valuesToRestore = Object.values(productData);
+                    await googleApiManager.appendRow(state.currentSpreadsheetId, `${originSheet}!A:A`, valuesToRestore);
+                }
+                
+                let newStatus = "ANNULE";
+                if(type === 'avoir') newStatus = "AVOIR";
+                if(type === 'echange') newStatus = "ECHANGE";
+                
+                await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!L${rowIndex}`, [newStatus]);
+
+                if(type === 'echange') {
+                    const exchSheet = document.getElementById('exch-sheet').value;
+                    const exchName = document.getElementById('exch-name').value;
+                    const exchRef = document.getElementById('exch-ref').value;
+                    const exchPrice = document.getElementById('exch-price').value;
+                    
+                    const rawData = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${exchSheet}!A1:Z1`);
+                    if(rawData && rawData[0]) {
+                        const headers = rawData[0];
+                        let newRow = new Array(headers.length).fill("");
+                        const nameIdx = headers.findIndex(h => h.toLowerCase().includes('nom'));
+                        const refIdx = headers.findIndex(h => h.toLowerCase().includes('ref'));
+                        const priceIdx = headers.findIndex(h => h.toLowerCase().includes('prix'));
+                        if(nameIdx>=0) newRow[nameIdx] = exchName;
+                        if(refIdx>=0) newRow[refIdx] = exchRef;
+                        if(priceIdx>=0) newRow[priceIdx] = exchPrice;
+                        await googleApiManager.appendRow(state.currentSpreadsheetId, `${exchSheet}!A:A`, newRow);
+                    }
+                }
+                showNotification(`Opération (${type}) effectuée !`, "success");
+            }
+            document.getElementById('cancel-sale-modal').style.display = 'none';
+            loadComptaData();
         });
     }
 }
@@ -780,12 +554,10 @@ async function loadExpensesData() {
 function setupExpenseForms() {
     const openBtn = document.getElementById('open-expense-modal-btn');
     if (openBtn) { openBtn.addEventListener('click', () => { updateProjectSelectOptions('exp-project-link'); const expDateInput = document.getElementById('exp-date'); if (expDateInput && !expDateInput.value) { expDateInput.value = new Date().toISOString().split('T')[0]; } const modal = document.getElementById('expense-modal'); if (modal) modal.style.display = 'block'; }); }
-
     const form = document.getElementById('expense-form');
     if (form) {
         form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const submitBtn = form.querySelector('button[type="submit"]'); const origHtml = submitBtn ? submitBtn.innerHTML : ''; if (submitBtn) { submitBtn.classList.add('btn-success-check'); submitBtn.innerHTML = '<i class="fas fa-check"></i> Charge enregistrée !'; }
+            e.preventDefault(); const submitBtn = form.querySelector('button[type="submit"]'); const origHtml = submitBtn ? submitBtn.innerHTML : ''; if (submitBtn) { submitBtn.classList.add('btn-success-check'); submitBtn.innerHTML = '<i class="fas fa-check"></i> Charge enregistrée !'; }
             const date = document.getElementById('exp-date').value || new Date().toISOString().split('T')[0]; const cat = document.getElementById('exp-cat').value; const desc = document.getElementById('exp-desc').value; const ttc = parsePrice(document.getElementById('exp-ttc').value); const tvaRate = parseFloat(document.getElementById('exp-tva-rate').value) || 0; const payment = document.getElementById('exp-payment').value; const projectId = document.getElementById('exp-project-link').value || '';
             const ht = (tvaRate > 0) ? (ttc / (1 + (tvaRate / 100))) : ttc; const tva = ttc - ht;
             const expenseRow = [ Date.now().toString(), date, cat, desc, ttc.toFixed(2), ht.toFixed(2), tva.toFixed(2), payment, projectId ];
@@ -798,26 +570,12 @@ function setupExpenseForms() {
 function renderFilteredExpenses() {
     const period = document.getElementById('filter-expense-period')?.value || 'all'; const catFilter = document.getElementById('filter-expense-cat')?.value || ''; const tbody = document.getElementById('expenses-table-body'); if (!tbody) return;
     const now = new Date();
-    const filteredExpenses = state.expensesRawRows.filter(r => {
-        if (catFilter && r.cat !== catFilter) return false;
-        if (period !== 'all' && r.date) { const expDate = new Date(r.date); if (period === 'month' && (expDate.getMonth() !== now.getMonth() || expDate.getFullYear() !== now.getFullYear())) return false; if (period === 'quarter') { const qNow = Math.floor(now.getMonth() / 3); const qRow = Math.floor(expDate.getMonth() / 3); if (qNow !== qRow || expDate.getFullYear() !== now.getFullYear()) return false; } if (period === 'year' && expDate.getFullYear() !== now.getFullYear()) return false; } return true;
-    });
-    const filteredSales = state.comptaRawRows.filter(r => {
-        if (r[11] === "ANNULE") return false;
-        if (period !== 'all') { const parts = (r[0] || '').split(/[/ :]/); if (parts.length >= 3) { const rowDate = new Date(parts[2], parts[1] - 1, parts[0]); if (period === 'month' && (rowDate.getMonth() !== now.getMonth() || rowDate.getFullYear() !== now.getFullYear())) return false; if (period === 'quarter') { const qNow = Math.floor(now.getMonth() / 3); const qRow = Math.floor(rowDate.getMonth() / 3); if (qNow !== qRow || rowDate.getFullYear() !== now.getFullYear()) return false; } if (period === 'year' && rowDate.getFullYear() !== now.getFullYear()) return false; } } return true;
-    });
+    const filteredExpenses = state.expensesRawRows.filter(r => { if (catFilter && r.cat !== catFilter) return false; if (period !== 'all' && r.date) { const expDate = new Date(r.date); if (period === 'month' && (expDate.getMonth() !== now.getMonth() || expDate.getFullYear() !== now.getFullYear())) return false; if (period === 'quarter') { const qNow = Math.floor(now.getMonth() / 3); const qRow = Math.floor(expDate.getMonth() / 3); if (qNow !== qRow || expDate.getFullYear() !== now.getFullYear()) return false; } if (period === 'year' && expDate.getFullYear() !== now.getFullYear()) return false; } return true; });
+    const filteredSales = state.comptaRawRows.filter(r => { if (r[11] === "ANNULE" || r[11] === "AVOIR" || r[11] === "ECHANGE") return false; if (period !== 'all') { const parts = (r[0] || '').split(/[/ :]/); if (parts.length >= 3) { const rowDate = new Date(parts[2], parts[1] - 1, parts[0]); if (period === 'month' && (rowDate.getMonth() !== now.getMonth() || rowDate.getFullYear() !== now.getFullYear())) return false; if (period === 'quarter') { const qNow = Math.floor(now.getMonth() / 3); const qRow = Math.floor(rowDate.getMonth() / 3); if (qNow !== qRow || rowDate.getFullYear() !== now.getFullYear()) return false; } if (period === 'year' && rowDate.getFullYear() !== now.getFullYear()) return false; } } return true; });
 
     let totalCA_HT = 0; filteredSales.forEach(r => { totalCA_HT += parseFloat(r[5]) || 0; });
     let totalExpensesHT = 0; let totalExpensesTTC = 0; let html = '';
-
-    filteredExpenses.slice().reverse().forEach(r => {
-        totalExpensesHT += r.ht; totalExpensesTTC += r.ttc;
-        html += `
-            <tr>
-                <td>${r.date}</td><td><span class="product-category">${r.cat}</span></td><td><strong>${r.desc}</strong></td><td>${r.payment}</td><td class="text-right font-bold" style="color:var(--danger);">${r.ttc.toFixed(2)} €</td><td class="text-right">${r.ht.toFixed(2)} €</td><td class="text-right" style="color:var(--gray);">${r.tva.toFixed(2)} €</td><td>${r.projectId ? `<span class="priority-tag priority-Moyenne"><i class="fas fa-bullhorn"></i> Projet</span>` : '-'}</td>
-                <td class="text-center"><button class="btn-table-action btn-table-cancel" onclick="deleteExpenseRow(${r.rowIndex})" title="Supprimer"><i class="fas fa-trash"></i></button></td>
-            </tr>`;
-    });
+    filteredExpenses.slice().reverse().forEach(r => { totalExpensesHT += r.ht; totalExpensesTTC += r.ttc; html += `<tr><td>${r.date}</td><td><span class="product-category">${r.cat}</span></td><td><strong>${r.desc}</strong></td><td>${r.payment}</td><td class="text-right font-bold" style="color:var(--danger);">${r.ttc.toFixed(2)} €</td><td class="text-right">${r.ht.toFixed(2)} €</td><td class="text-right" style="color:var(--gray);">${r.tva.toFixed(2)} €</td><td>${r.projectId ? `<span class="priority-tag priority-Moyenne"><i class="fas fa-bullhorn"></i> Projet</span>` : '-'}</td><td class="text-center"><button class="btn-table-action btn-table-cancel" onclick="deleteExpenseRow(${r.rowIndex})" title="Supprimer"><i class="fas fa-trash"></i></button></td></tr>`; });
     if (filteredExpenses.length === 0) { tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">Aucune dépense sur cette période.</td></tr>'; } else { tbody.innerHTML = html; }
     const netProfitHT = totalCA_HT - totalExpensesHT; const marginRate = (totalCA_HT > 0) ? ((netProfitHT / totalCA_HT) * 100) : 0;
     renderMarginKPIs(totalCA_HT, totalExpensesHT, netProfitHT, marginRate);
@@ -825,18 +583,11 @@ function renderFilteredExpenses() {
 
 function renderMarginKPIs(caHT, expensesHT, netProfit, marginRate) {
     const el = document.getElementById('margin-kpis'); if (!el) return; const isProfitPositive = netProfit >= 0;
-    el.innerHTML = `
-        <div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-file-invoice-dollar"></i></div><div class="kpi-info"><span class="kpi-label">Total CA Net HT</span><span class="kpi-value">${caHT.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-receipt"></i></div><div class="kpi-info"><span class="kpi-label">Charges & Dépenses HT</span><span class="kpi-value">${expensesHT.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon ${isProfitPositive ? 'kpi-green' : 'kpi-purple'}"><i class="fas fa-hand-holding-usd"></i></div><div class="kpi-info"><span class="kpi-label">Bénéfice Net Réel</span><span class="kpi-value" style="color:${isProfitPositive ? 'var(--success)' : 'var(--danger)'};">${isProfitPositive ? '+' : ''}${netProfit.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon ${isProfitPositive ? 'kpi-green' : 'kpi-purple'}"><i class="fas fa-percent"></i></div><div class="kpi-info"><span class="kpi-label">Taux de Marge Nette</span><span class="kpi-value">${marginRate.toFixed(1)} %</span></div></div>`;
+    el.innerHTML = `<div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-file-invoice-dollar"></i></div><div class="kpi-info"><span class="kpi-label">Total CA Net HT</span><span class="kpi-value">${caHT.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-receipt"></i></div><div class="kpi-info"><span class="kpi-label">Charges & Dépenses HT</span><span class="kpi-value">${expensesHT.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div><div class="kpi-card"><div class="kpi-icon ${isProfitPositive ? 'kpi-green' : 'kpi-purple'}"><i class="fas fa-hand-holding-usd"></i></div><div class="kpi-info"><span class="kpi-label">Bénéfice Net Réel</span><span class="kpi-value" style="color:${isProfitPositive ? 'var(--success)' : 'var(--danger)'};">${isProfitPositive ? '+' : ''}${netProfit.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div><div class="kpi-card"><div class="kpi-icon ${isProfitPositive ? 'kpi-green' : 'kpi-purple'}"><i class="fas fa-percent"></i></div><div class="kpi-info"><span class="kpi-label">Taux de Marge Nette</span><span class="kpi-value">${marginRate.toFixed(1)} %</span></div></div>`;
 }
 
 window.deleteExpenseRow = async function(rowIndex) {
-    if (confirm("Supprimer définitivement cette charge ?")) {
-        const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); const sheetObj = sheetDetails.sheets.find(s => s.properties.title === EXPENSES_SHEET_NAME);
-        if (sheetObj) { await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, rowIndex); showNotification("Charge supprimée !", "info"); loadExpensesData(); }
-    }
+    if (confirm("Supprimer définitivement cette charge ?")) { const sheetDetails = await googleApiManager.getSpreadsheetDetails(state.currentSpreadsheetId); const sheetObj = sheetDetails.sheets.find(s => s.properties.title === EXPENSES_SHEET_NAME); if (sheetObj) { await googleApiManager.deleteRow(state.currentSpreadsheetId, sheetObj.properties.sheetId, rowIndex); showNotification("Charge supprimée !", "info"); loadExpensesData(); } }
 };
 
 function updateProjectSelectOptions(selectId) {
@@ -886,22 +637,28 @@ function renderFilteredCompta() {
 
     const now = new Date();
     const filtered = state.comptaRawRows.filter(r => {
-        const status = r[11] || "VALID"; if (statusFilter && status !== statusFilter) return false; if (typeFilter && String(r[8]) !== typeFilter) return false; if (paymentFilter && !String(r[7]).includes(paymentFilter)) return false;
+        const status = r[11] || "VALID"; 
+        if (statusFilter && statusFilter === "VALID" && status !== "VALID") return false;
+        if (statusFilter && statusFilter === "ANNULE" && status === "VALID") return false;
+        if (typeFilter && String(r[8]) !== typeFilter) return false; 
+        if (paymentFilter && !String(r[7]).includes(paymentFilter)) return false;
         if (period !== 'all') { const dateStr = r[0]; const parts = dateStr.split(/[/ :]/); if (parts.length >= 3) { const rowDate = new Date(parts[2], parts[1] - 1, parts[0]); if (period === 'month' && (rowDate.getMonth() !== now.getMonth() || rowDate.getFullYear() !== now.getFullYear())) return false; if (period === 'quarter') { const qNow = Math.floor(now.getMonth() / 3); const qRow = Math.floor(rowDate.getMonth() / 3); if (qNow !== qRow || rowDate.getFullYear() !== now.getFullYear()) return false; } if (period === 'year' && rowDate.getFullYear() !== now.getFullYear()) return false; } } return true;
     });
 
     let html = ''; let totalTTC = 0, totalHT = 0, totalTVA = 0, totalDueDiff = 0;
     filtered.slice().reverse().forEach(r => {
-        const isAnnule = (r[11] === "ANNULE"); const ttc = parseFloat(r[4]) || 0; const ht = parseFloat(r[5]) || 0; const tva = parseFloat(r[6]) || 0;
+        const isAnnule = (r[11] === "ANNULE" || r[11] === "AVOIR" || r[11] === "ECHANGE"); 
+        const ttc = parseFloat(r[4]) || 0; const ht = parseFloat(r[5]) || 0; const tva = parseFloat(r[6]) || 0;
         const isDiff = String(r[7]).includes('Différé') && !isAnnule; const isSettled = String(r[9]).includes('SOLDE REGLÉ');
         if (!isAnnule) { totalTTC += ttc; totalHT += ht; totalTVA += tva; if (isDiff && !isSettled) { const m = String(r[9]).match(/Reste dû:\s*([\d\.]+)€/); if(m) totalDueDiff += parseFloat(m[1]) || 0; } }
+        
         html += `
             <tr class="${isAnnule ? 'row-annule' : ''}">
-                <td>${r[0] || '-'}</td><td><span class="product-ref-badge" style="position:static;">${r[1] || ''} | ${r[2] || '-'}</span></td><td><strong>${r[3] || '-'}</strong></td><td><span class="product-category">${r[8] || '-'}</span></td><td>${r[7] || '-'}</td><td class="text-right font-bold">${ttc.toFixed(2)} €</td><td class="text-right">${ht.toFixed(2)} €</td><td class="text-right" style="color:var(--gray);">${tva.toFixed(2)} €</td><td style="font-size:0.85rem;">${r[9] || '-'} ${isAnnule ? '<strong style="color:var(--danger);">[ANNULÉ]</strong>' : ''}</td>
+                <td>${r[0] || '-'}</td><td><span class="product-ref-badge" style="position:static;">${r[1] || ''} | ${r[2] || '-'}</span></td><td><strong>${r[3] || '-'}</strong></td><td><span class="product-category">${r[8] || '-'}</span></td><td>${r[7] || '-'}</td><td class="text-right font-bold">${ttc.toFixed(2)} €</td><td class="text-right">${ht.toFixed(2)} €</td><td class="text-right" style="color:var(--gray);">${tva.toFixed(2)} €</td><td style="font-size:0.85rem;">${r[9] || '-'} ${isAnnule ? `<strong style="color:var(--danger);">[${r[11]}]</strong>` : ''}</td>
                 <td class="text-center">
                     <button class="btn-table-action btn-table-pdf" onclick="reprintPDF(${r.rowIndex})" title="Imprimer Reçu"><i class="fas fa-file-pdf"></i></button>
                     ${isDiff ? (!isSettled ? `<button class="btn-table-action btn-table-settle" onclick="settleDeferred(${r.rowIndex})"><i class="fas fa-check"></i> Solde réglé</button>` : `<button class="btn-table-action" style="background-color: var(--gray); color:white;" onclick="unsettleDeferred(${r.rowIndex})"><i class="fas fa-undo"></i> Rétablir dû</button>`) : ''}
-                    ${!isAnnule ? `<button class="btn-table-action btn-table-cancel" onclick="cancelSale(${r.rowIndex})"><i class="fas fa-undo"></i></button>` : ''}
+                    ${!isAnnule ? `<button class="btn-table-action btn-table-cancel" onclick="cancelSale(${r.rowIndex})" title="Gérer ou Annuler la vente"><i class="fas fa-undo"></i></button>` : ''}
                 </td>
             </tr>`;
     });
@@ -910,38 +667,33 @@ function renderFilteredCompta() {
 
 function renderComptaKPIs(rows, ttc = 0, ht = 0, tva = 0, dueDiff = 0) {
     const el = document.getElementById('compta-kpis'); if (!el) return;
-    el.innerHTML = `
-        <div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-coins"></i></div><div class="kpi-info"><span class="kpi-label">CA Filtré TTC</span><span class="kpi-value">${ttc.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-file-invoice-dollar"></i></div><div class="kpi-info"><span class="kpi-label">Total HT (Assiette)</span><span class="kpi-value">${ht.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-purple"><i class="fas fa-percent"></i></div><div class="kpi-info"><span class="kpi-label">TVA Collectée</span><span class="kpi-value">${tva.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-clock"></i></div><div class="kpi-info"><span class="kpi-label">Créances Restantes</span><span class="kpi-value">${dueDiff.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>`;
+    el.innerHTML = `<div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-coins"></i></div><div class="kpi-info"><span class="kpi-label">CA Filtré TTC</span><span class="kpi-value">${ttc.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-file-invoice-dollar"></i></div><div class="kpi-info"><span class="kpi-label">Total HT (Assiette)</span><span class="kpi-value">${ht.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-purple"><i class="fas fa-percent"></i></div><div class="kpi-info"><span class="kpi-label">TVA Collectée</span><span class="kpi-value">${tva.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-clock"></i></div><div class="kpi-info"><span class="kpi-label">Créances Restantes</span><span class="kpi-value">${dueDiff.toLocaleString('fr-FR', {minimumFractionDigits: 2})} €</span></div></div>`;
 }
 
 window.settleDeferred = async function(rowIndex) {
     const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex); if (!row) return;
-    if (confirm("Confirmer la réception de la totalité du paiement ? Le reste dû passera à 0€.")) {
-        const matchRest = String(row[9]).match(/Reste dû:\s*([\d\.]+)€/); const restAmount = matchRest ? matchRest[1] : '0';
-        const updatedDetails = String(row[9]).replace(/Payé:\s*[\d\.]+€/, `Payé: ${row[4]}€`).replace(/Reste dû:\s*([\d\.]+)\s*€/, `Reste dû: 0.00€ (SOLDE REGLÉ [prevRest:${restAmount}])`);
-        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [updatedDetails]); showNotification("Paiement soldé !", "success"); loadComptaData();
-    }
+    if (confirm("Confirmer la réception de la totalité du paiement ? Le reste dû passera à 0€.")) { const matchRest = String(row[9]).match(/Reste dû:\s*([\d\.]+)€/); const restAmount = matchRest ? matchRest[1] : '0'; const updatedDetails = String(row[9]).replace(/Payé:\s*[\d\.]+€/, `Payé: ${row[4]}€`).replace(/Reste dû:\s*([\d\.]+)\s*€/, `Reste dû: 0.00€ (SOLDE REGLÉ [prevRest:${restAmount}])`); await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [updatedDetails]); showNotification("Paiement soldé !", "success"); loadComptaData(); }
 };
 
 window.unsettleDeferred = async function(rowIndex) {
     const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex); if (!row) return;
-    if (await showFMRConfirm("Confirmer la réception de la totalité du paiement ? Le reste dû passera à 0€.")) {
-        const prevMatch = String(row[9]).match(/\[prevRest:([\d\.]+)\]/); const originalRest = prevMatch ? parseFloat(prevMatch[1]) : 0; const totalTTC = parseFloat(row[4]) || 0; const originalPaid = Math.max(0, totalTTC - originalRest).toFixed(2);
-        const restoredDetails = String(row[9]).replace(/Payé:\s*[\d\.]+€/, `Payé: ${originalPaid}€`).replace(/Reste dû:\s*0\.00€\s*\(SOLDE REGLÉ\s*\[prevRest:[\d\.]+\]\)/, `Reste dû: ${originalRest.toFixed(2)}€`);
-        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [restoredDetails]); showNotification("Montant restant dû rétabli !", "info"); loadComptaData();
-    }
+    if (await showFMRConfirm("Confirmer la réception de la totalité du paiement ? Le reste dû passera à 0€.")) { const prevMatch = String(row[9]).match(/\[prevRest:([\d\.]+)\]/); const originalRest = prevMatch ? parseFloat(prevMatch[1]) : 0; const totalTTC = parseFloat(row[4]) || 0; const originalPaid = Math.max(0, totalTTC - originalRest).toFixed(2); const restoredDetails = String(row[9]).replace(/Payé:\s*[\d\.]+€/, `Payé: ${originalPaid}€`).replace(/Reste dû:\s*0\.00€\s*\(SOLDE REGLÉ\s*\[prevRest:[\d\.]+\]\)/, `Reste dû: ${originalRest.toFixed(2)}€`); await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [restoredDetails]); showNotification("Montant restant dû rétabli !", "info"); loadComptaData(); }
 };
 
-window.cancelSale = async function(rowIndex) {
-    const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex); if (!row) return;
-    if (await showFMRConfirm("Annuler cette vente ? Le produit sera restitué dans son dossier de stock d'origine.")) {
-        const originSheet = row[1]; const rawJson = row[10];
-        if (originSheet && rawJson && rawJson !== "{}") { const productData = JSON.parse(rawJson); delete productData.gSheetRowIndex; const valuesToRestore = Object.values(productData); await googleApiManager.appendRow(state.currentSpreadsheetId, `${originSheet}!A:A`, valuesToRestore); }
-        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!L${rowIndex}`, ["ANNULE"]); showNotification("Vente annulée et pièce réintégrée au stock !", "success"); loadComptaData();
+window.cancelSale = function(rowIndex) {
+    document.getElementById('cancel-row-idx').value = rowIndex;
+    document.getElementById('cancel-type').value = 'retour';
+    document.getElementById('exchange-fields').classList.add('hidden');
+    const sel = document.getElementById('exch-sheet');
+    if (sel) {
+        sel.innerHTML = '';
+        state.spreadsheetDetails.sheets.forEach(s => {
+            if(![COMPTA_SHEET_NAME, PROJECTS_SHEET_NAME, EXPENSES_SHEET_NAME, CLIENTS_SHEET_NAME, PRESTATIONS_SHEET_NAME, AGENDA_SHEET_NAME].includes(s.properties.title)) {
+                sel.innerHTML += `<option value="${s.properties.title}">${s.properties.title}</option>`;
+            }
+        });
     }
+    document.getElementById('cancel-sale-modal').style.display = 'block';
 };
 
 window.reprintPDF = function(rowIndex) {
@@ -952,7 +704,7 @@ window.reprintPDF = function(rowIndex) {
 function exportFEC() {
     if (state.comptaRawRows.length === 0) { showNotification("Aucune donnée comptable à exporter", "error"); return; }
     const fecHeaders = ["DatePiece", "NumeroPiece", "CompteNum", "CompteLibelle", "Debit", "Credit", "Libelle"]; const fecRows = [];
-    state.comptaRawRows.filter(r => r[11] !== "ANNULE").forEach((r, idx) => {
+    state.comptaRawRows.filter(r => r[11] === "VALID").forEach((r, idx) => {
         const dateClean = (r[0] || "").split(' ')[0].replace(/\//g, ''); const pieceNum = `VT-${idx + 1}`; const ttc = parseFloat(r[4]) || 0; const ht = parseFloat(r[5]) || 0; const tva = parseFloat(r[6]) || 0; const desc = (r[3] || "Vente").replace(/"/g, '""');
         fecRows.push([dateClean, pieceNum, "512000", "Banque", ttc.toFixed(2), "0.00", desc]); fecRows.push([dateClean, pieceNum, "707000", "Ventes de marchandises", "0.00", ht.toFixed(2), desc]);
         if (tva > 0) { fecRows.push([dateClean, pieceNum, "445710", "TVA collectee 20%", "0.00", tva.toFixed(2), desc]); }
@@ -961,62 +713,68 @@ function exportFEC() {
 }
 
 function renderDepotsBilan() {
-    const depotRows = state.comptaRawRows.filter(r => String(r[8]).includes('DEPOT') && r[11] !== "ANNULE"); const tbody = document.getElementById('depots-table-body'); const kpiContainer = document.getElementById('depot-kpis'); if (!tbody || !kpiContainer) return;
-    if (depotRows.length === 0) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucune vente en dépôt-vente.</td></tr>'; kpiContainer.innerHTML = ''; return; }
+    const depotRows = state.comptaRawRows.filter(r => String(r[8]).includes('DEPOT') && r[11] === "VALID"); 
+    const tbodyVendu = document.getElementById('depots-table-body'); 
+    const kpiContainer = document.getElementById('depot-kpis'); 
+    if (tbodyVendu && kpiContainer) {
+        if (depotRows.length === 0) { tbodyVendu.innerHTML = '<tr><td colspan="7" style="text-align:center;">Aucune vente en dépôt-vente.</td></tr>'; kpiContainer.innerHTML = ''; }
+        else {
+            let grandTotalTTC = 0, grandTotalDuePending = 0, grandTotalDuePaid = 0, grandTotalStore = 0; let html = '';
+            depotRows.slice().reverse().forEach(r => {
+                const date = r[0] || '-'; const article = `${r[3] || '-'} (${r[2] || '-'})`; const ttc = parseFloat(r[4]) || 0; const details = r[9] || '';
+                const ownerMatch = details.match(/Dépositaire\s*([^|\]]+)/); const dueMatch = details.match(/Dû:\s*([\d\.]+)€/); const gainMatch = details.match(/Com Boutique TTC:\s*([\d\.]+)€/); const statusMatch = details.match(/\[STATUT_DEPOT:\s*([^\]]+)\]/);
+                const owner = ownerMatch ? ownerMatch[1].trim() : "Inconnu"; const due = dueMatch ? parseFloat(dueMatch[1]) || 0 : 0; const gain = gainMatch ? parseFloat(gainMatch[1]) || 0 : Math.max(0, ttc - due); const status = statusMatch ? statusMatch[1].trim() : "EN_ATTENTE";
+                grandTotalTTC += ttc; grandTotalStore += gain; if (status === 'PAYE' || status === 'PAYÉ') { grandTotalDuePaid += due; } else { grandTotalDuePending += due; }
+                const isPending = (status === 'EN_ATTENTE');
+                html += `<tr><td>${date}</td><td><strong>${article}</strong></td><td><i class="fas fa-user-circle" style="color:var(--primary); margin-right:5px;"></i> ${owner}</td><td class="text-right font-bold">${ttc.toFixed(2)} €</td><td class="text-right" style="color:var(--danger); font-weight:700;">${due.toFixed(2)} €</td><td class="text-center">${isPending ? `<span class="product-status" style="background:#fff3e0; color:#ef6c00; padding:5px 10px;"><i class="fas fa-clock"></i> En attente</span>` : `<span class="product-status" style="background:#e8f5e9; color:#2e7d32; padding:5px 10px;"><i class="fas fa-check"></i> Part versée</span>`}</td><td class="text-center">${isPending ? `<button class="btn-table-action btn-table-settle" onclick="settleDepot(${r.rowIndex})"><i class="fas fa-hand-holding-usd"></i> Valider Versement</button>` : `<button class="btn-table-action" style="background-color: var(--gray); color:white;" onclick="unsettleDepot(${r.rowIndex})"><i class="fas fa-undo"></i> Rétablir dû</button>`}</td></tr>`;
+            });
+            kpiContainer.innerHTML = `<div class="kpi-card"><div class="kpi-icon kpi-purple"><i class="fas fa-handshake"></i></div><div class="kpi-info"><span class="kpi-label">CA Dépôts TTC</span><span class="kpi-value">${grandTotalTTC.toFixed(2)} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-hourglass-half"></i></div><div class="kpi-info"><span class="kpi-label">Reste à Verser</span><span class="kpi-value" style="color:var(--danger);">${grandTotalDuePending.toFixed(2)} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-check-circle"></i></div><div class="kpi-info"><span class="kpi-label">Déjà Versé</span><span class="kpi-value">${grandTotalDuePaid.toFixed(2)} €</span></div></div><div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-store"></i></div><div class="kpi-info"><span class="kpi-label">Commissions Boutique</span><span class="kpi-value">${grandTotalStore.toFixed(2)} €</span></div></div>`;
+            tbodyVendu.innerHTML = html;
+        }
+    }
 
-    let grandTotalTTC = 0, grandTotalDuePending = 0, grandTotalDuePaid = 0, grandTotalStore = 0; let html = '';
-    depotRows.slice().reverse().forEach(r => {
-        const date = r[0] || '-'; const article = `${r[3] || '-'} (${r[2] || '-'})`; const ttc = parseFloat(r[4]) || 0; const details = r[9] || '';
-        const ownerMatch = details.match(/Dépositaire\s*([^|\]]+)/); const dueMatch = details.match(/Dû:\s*([\d\.]+)€/); const gainMatch = details.match(/Com Boutique TTC:\s*([\d\.]+)€/); const statusMatch = details.match(/\[STATUT_DEPOT:\s*([^\]]+)\]/);
-        const owner = ownerMatch ? ownerMatch[1].trim() : "Inconnu"; const due = dueMatch ? parseFloat(dueMatch[1]) || 0 : 0; const gain = gainMatch ? parseFloat(gainMatch[1]) || 0 : Math.max(0, ttc - due); const status = statusMatch ? statusMatch[1].trim() : "EN_ATTENTE";
-        grandTotalTTC += ttc; grandTotalStore += gain; if (status === 'PAYE' || status === 'PAYÉ') { grandTotalDuePaid += due; } else { grandTotalDuePending += due; }
-        const isPending = (status === 'EN_ATTENTE');
-        html += `
-            <tr>
-                <td>${date}</td><td><strong>${article}</strong></td><td><i class="fas fa-user-circle" style="color:var(--primary); margin-right:5px;"></i> ${owner}</td><td class="text-right font-bold">${ttc.toFixed(2)} €</td><td class="text-right" style="color:var(--danger); font-weight:700;">${due.toFixed(2)} €</td>
-                <td class="text-center">${isPending ? `<span class="product-status" style="background:#fff3e0; color:#ef6c00; padding:5px 10px;"><i class="fas fa-clock"></i> En attente</span>` : `<span class="product-status" style="background:#e8f5e9; color:#2e7d32; padding:5px 10px;"><i class="fas fa-check"></i> Part versée</span>`}</td>
-                <td class="text-center">${isPending ? `<button class="btn-table-action btn-table-settle" onclick="settleDepot(${r.rowIndex})"><i class="fas fa-hand-holding-usd"></i> Valider Versement</button>` : `<button class="btn-table-action" style="background-color: var(--gray); color:white;" onclick="unsettleDepot(${r.rowIndex})"><i class="fas fa-undo"></i> Rétablir dû</button>`}</td>
-            </tr>`;
-    });
+    const boutiqueBody = document.getElementById('depot-boutique-body');
+    if(boutiqueBody) {
+        const boutiqueItems = state.allStock.filter(item => {
+            const isDepot = Object.values(item).some(v => String(v).includes('[Dépôt') || String(v).toLowerCase() === 'oui');
+            const hasDepCol = Object.keys(item).some(k => k.toLowerCase().includes('déposit') && item[k] && item[k].trim() !== '');
+            return isDepot || hasDepCol;
+        });
 
-    kpiContainer.innerHTML = `
-        <div class="kpi-card"><div class="kpi-icon kpi-purple"><i class="fas fa-handshake"></i></div><div class="kpi-info"><span class="kpi-label">CA Dépôts TTC</span><span class="kpi-value">${grandTotalTTC.toFixed(2)} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-orange"><i class="fas fa-hourglass-half"></i></div><div class="kpi-info"><span class="kpi-label">Reste à Verser</span><span class="kpi-value" style="color:var(--danger);">${grandTotalDuePending.toFixed(2)} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-green"><i class="fas fa-check-circle"></i></div><div class="kpi-info"><span class="kpi-label">Déjà Versé</span><span class="kpi-value">${grandTotalDuePaid.toFixed(2)} €</span></div></div>
-        <div class="kpi-card"><div class="kpi-icon kpi-blue"><i class="fas fa-store"></i></div><div class="kpi-info"><span class="kpi-label">Commissions Boutique</span><span class="kpi-value">${grandTotalStore.toFixed(2)} €</span></div></div>`;
-    tbody.innerHTML = html;
+        if(boutiqueItems.length === 0) {
+            boutiqueBody.innerHTML = '<tr><td colspan="5" class="text-center">Aucun article en dépôt actuellement en boutique.</td></tr>';
+        } else {
+            boutiqueBody.innerHTML = boutiqueItems.map(item => {
+                const nameKey = Object.keys(item).find(x => x.toLowerCase().includes('nom')) || Object.keys(item)[0];
+                const priceKey = detectBestPriceColumn(Object.keys(item), [item]);
+                const depKey = Object.keys(item).find(x => x.toLowerCase().includes('déposit'));
+                let depositaire = depKey ? item[depKey] : "Inconnu";
+                if(depositaire === "Inconnu" && String(item[nameKey]).includes('[Dépôt')) {
+                    const m = String(item[nameKey]).match(/\[Dépôt - (.*?)\]/);
+                    if(m) depositaire = m[1];
+                }
+                return `<tr><td><span class="product-category">${item.sheetTitle}</span></td><td><strong>${item[nameKey]}</strong></td><td><i class="fas fa-user-circle" style="color:var(--primary);"></i> ${depositaire}</td><td>${priceKey && item[priceKey] ? item[priceKey]+' €' : '-'}</td><td class="text-center"><span class="product-status" style="background:var(--info); color:white;">En Stock</span></td></tr>`;
+            }).join('');
+        }
+    }
 }
 
 window.settleDepot = async function(rowIndex) {
     const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex); if (!row) return;
-    if (await showFMRConfirm("Confirmer que le dépositaire a bien reçu sa part pour cet article ?")) {
-        let details = String(row[9]); if (details.includes('[STATUT_DEPOT: EN_ATTENTE]')) { details = details.replace('[STATUT_DEPOT: EN_ATTENTE]', '[STATUT_DEPOT: PAYE]'); } else if (!details.includes('[STATUT_DEPOT:')) { details += ' [STATUT_DEPOT: PAYE]'; }
-        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [details]); showNotification("Versement confirmé !", "success"); loadComptaData();
-    }
+    if (await showFMRConfirm("Confirmer que le dépositaire a bien reçu sa part pour cet article ?")) { let details = String(row[9]); if (details.includes('[STATUT_DEPOT: EN_ATTENTE]')) { details = details.replace('[STATUT_DEPOT: EN_ATTENTE]', '[STATUT_DEPOT: PAYE]'); } else if (!details.includes('[STATUT_DEPOT:')) { details += ' [STATUT_DEPOT: PAYE]'; } await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [details]); showNotification("Versement confirmé !", "success"); loadComptaData(); }
 };
 
 window.unsettleDepot = async function(rowIndex) {
     const row = state.comptaRawRows.find(r => r.rowIndex === rowIndex); if (!row) return;
-    if (await showFMRConfirm("Annuler ce versement et remettre l'article en attente de paiement ?")) {
-        let details = String(row[9]); if (details.includes('[STATUT_DEPOT: PAYE]')) { details = details.replace('[STATUT_DEPOT: PAYE]', '[STATUT_DEPOT: EN_ATTENTE]'); }
-        await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [details]); showNotification("Statut remis en attente !", "info"); loadComptaData();
-    }
+    if (await showFMRConfirm("Annuler ce versement et remettre l'article en attente de paiement ?")) { let details = String(row[9]); if (details.includes('[STATUT_DEPOT: PAYE]')) { details = details.replace('[STATUT_DEPOT: PAYE]', '[STATUT_DEPOT: EN_ATTENTE]'); } await googleApiManager.updateRow(state.currentSpreadsheetId, `${COMPTA_SHEET_NAME}!J${rowIndex}`, [details]); showNotification("Statut remis en attente !", "info"); loadComptaData(); }
 };
 
 // --- NOTIFICATIONS DEADLINES PROJETS ---
 function checkProjectDeadlines() {
     if (!state.projects || state.projects.length === 0) return;
     const today = new Date(); today.setHours(0, 0, 0, 0); let alerts = [];
-    state.projects.forEach(p => {
-        if (p.status === 'Publié' || !p.end) return;
-        const dl = new Date(p.end); dl.setHours(0, 0, 0, 0); const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24));
-        if (diffDays < 0) { alerts.push(`🚨 <strong>${p.name}</strong> : En retard (${p.end})`); } else if (diffDays === 0) { alerts.push(`⚠️ <strong>${p.name}</strong> : À terminer AUJOURD'HUI`); } else if (diffDays > 0 && diffDays <= 3) { alerts.push(`⏳ <strong>${p.name}</strong> : J-${diffDays} (${p.end})`); }
-    });
-    if (alerts.length > 0) {
-        const displayAlerts = alerts.slice(0, 4); let msg = displayAlerts.join('<br><br>');
-        if (alerts.length > 4) { msg += `<br><br><em>+ ${alerts.length - 4} autre(s) projet(s) urgent(s)</em>`; }
-        setTimeout(() => { showNotification(`<div style="font-size: 0.95rem; line-height: 1.4;"><strong>Rappel des Deadlines :</strong><br><br>${msg}</div>`, "info"); }, 2500);
-    }
+    state.projects.forEach(p => { if (p.status === 'Publié' || !p.end) return; const dl = new Date(p.end); dl.setHours(0, 0, 0, 0); const diffDays = Math.ceil((dl - today) / (1000 * 60 * 60 * 24)); if (diffDays < 0) { alerts.push(`🚨 <strong>${p.name}</strong> : En retard (${p.end})`); } else if (diffDays === 0) { alerts.push(`⚠️ <strong>${p.name}</strong> : À terminer AUJOURD'HUI`); } else if (diffDays > 0 && diffDays <= 3) { alerts.push(`⏳ <strong>${p.name}</strong> : J-${diffDays} (${p.end})`); } });
+    if (alerts.length > 0) { const displayAlerts = alerts.slice(0, 4); let msg = displayAlerts.join('<br><br>'); if (alerts.length > 4) { msg += `<br><br><em>+ ${alerts.length - 4} autre(s) projet(s) urgent(s)</em>`; } setTimeout(() => { showNotification(`<div style="font-size: 0.95rem; line-height: 1.4;"><strong>Rappel des Deadlines :</strong><br><br>${msg}</div>`, "info"); }, 2500); }
 }
 
 // ========================================================
@@ -1043,7 +801,16 @@ function setupProjectEvents() {
     if (templateSelect) { templateSelect.addEventListener('change', (e) => { const key = e.target.value; if (!key || !PROJECT_TEMPLATES[key]) return; const tpl = PROJECT_TEMPLATES[key]; document.getElementById('proj-name').value = tpl.name; document.getElementById('proj-desc').value = tpl.desc; document.getElementById('proj-priority').value = tpl.priority; document.getElementById('proj-budget-ads').value = tpl.budgetAds; document.getElementById('proj-budget-prod').value = tpl.budgetProd; document.querySelectorAll('input[name="proj-channels"]').forEach(cb => { cb.checked = tpl.channels.includes(cb.value); }); state.currentProjectChecklist = tpl.tasks.map(t => ({ text: t, done: false })); renderChecklistBuilder(); }); }
 
     const addTaskBtn = document.getElementById('add-task-item-btn'); const taskInput = document.getElementById('new-task-input');
-    const handleAddTask = () => { const text = taskInput?.value.trim(); if (!text) return; state.currentProjectChecklist.push({ text: text, done: false }); taskInput.value = ''; renderChecklistBuilder(); };
+    const handleAddTask = () => { 
+        const text = taskInput?.value.trim(); 
+        const assignee = document.getElementById('new-task-assignee')?.value.trim();
+        if (!text) return; 
+        const fullText = assignee ? `${text} (Assigné à: ${assignee})` : text;
+        state.currentProjectChecklist.push({ text: fullText, done: false }); 
+        taskInput.value = ''; 
+        if(document.getElementById('new-task-assignee')) document.getElementById('new-task-assignee').value = '';
+        renderChecklistBuilder(); 
+    };
     if (addTaskBtn) addTaskBtn.addEventListener('click', handleAddTask); if (taskInput) { taskInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTask(); } }); }
 
     const projForm = document.getElementById('project-form');
@@ -1108,14 +875,22 @@ function renderKanban() {
                 return `<span class="channel-badge ${cls}"><i class="${icon}"></i> ${clean}</span>`;
             }).join('');
 
-            let projectSalesTotal = 0; state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { projectSalesTotal += parseFloat(r[4]) || 0; } });
+            let projectSalesTotal = 0; state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && r[11] !== "AVOIR" && r[11] !== "ECHANGE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { projectSalesTotal += parseFloat(r[4]) || 0; } });
             const totalBudget = (parseFloat(p.budgetAds) || 0) + (parseFloat(p.budgetProd) || 0); const netROI = projectSalesTotal - totalBudget; let roiHtml = '';
             if (totalBudget > 0 || projectSalesTotal > 0) { roiHtml = `<div style="font-size:0.8rem; display:flex; justify-content:space-between; align-items:center; background:var(--light); padding:4px 8px; border-radius:6px;"><span>Budget: <strong>${totalBudget.toFixed(0)}€</strong> | Ventes: <strong>${projectSalesTotal.toFixed(0)}€</strong></span><span class="roi-metric-badge ${netROI < 0 ? 'negative' : ''}">${netROI >= 0 ? '+' : ''}${netROI.toFixed(0)}€ ROI</span></div>`; }
 
             let checklistHtml = '';
             if (p.checklist && p.checklist.length > 0) {
                 const completedCount = p.checklist.filter(t => t.done).length;
-                checklistHtml = `<div class="kanban-checklist"><div style="font-weight:700; font-size:0.8rem; display:flex; justify-content:space-between;"><span><i class="fas fa-check-double"></i> Checklist</span><span>${completedCount}/${p.checklist.length}</span></div>${p.checklist.map((t, tIdx) => `<label class="checklist-item ${t.done ? 'done' : ''}"><input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleKanbanTask('${p.id}', ${tIdx})"><span>${t.text}</span></label>`).join('')}</div>`;
+                checklistHtml = `<div class="kanban-checklist"><div style="font-weight:700; font-size:0.8rem; display:flex; justify-content:space-between;"><span><i class="fas fa-check-double"></i> Checklist</span><span>${completedCount}/${p.checklist.length}</span></div>${p.checklist.map((t, tIdx) => {
+                    let taskText = t.text; let assignHtml = '';
+                    const match = taskText.match(/\(Assigné à:\s*(.*?)\)/);
+                    if(match) {
+                        taskText = taskText.replace(match[0], '').trim();
+                        assignHtml = `<span class="assignee-tag"><i class="fas fa-user"></i> ${match[1]}</span>`;
+                    }
+                    return `<label class="checklist-item ${t.done ? 'done' : ''}"><input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleKanbanTask('${p.id}', ${tIdx})"><span>${taskText} ${assignHtml}</span></label>`;
+                }).join('')}</div>`;
             }
 
             card.innerHTML = `
@@ -1137,10 +912,17 @@ function renderKanban() {
 window.openProjectDetailsModal = function(id) {
     const p = state.projects.find(proj => proj.id == id); if (!p) return;
     document.getElementById('view-proj-title').innerHTML = `<i class="fas fa-bullhorn"></i> ${p.name}`; const body = document.getElementById('view-project-body');
-    let projectSalesTotal = 0; state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { projectSalesTotal += parseFloat(r[4]) || 0; } });
+    let projectSalesTotal = 0; state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && r[11] !== "AVOIR" && r[11] !== "ECHANGE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { projectSalesTotal += parseFloat(r[4]) || 0; } });
     const totalBudget = (parseFloat(p.budgetAds) || 0) + (parseFloat(p.budgetProd) || 0); const netROI = projectSalesTotal - totalBudget;
     let checklistView = '<span style="color:var(--gray);">Aucune tâche définie.</span>';
-    if (p.checklist && p.checklist.length > 0) { checklistView = p.checklist.map((t, idx) => `<label class="checklist-item ${t.done ? 'done' : ''}" style="margin-bottom:6px;"><input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleKanbanTask('${p.id}', ${idx}); openProjectDetailsModal('${p.id}');"><span>${t.text}</span></label>`).join(''); }
+    if (p.checklist && p.checklist.length > 0) { 
+        checklistView = p.checklist.map((t, idx) => {
+            let taskText = t.text; let assignHtml = '';
+            const match = taskText.match(/\(Assigné à:\s*(.*?)\)/);
+            if(match) { taskText = taskText.replace(match[0], '').trim(); assignHtml = `<span class="assignee-tag"><i class="fas fa-user"></i> ${match[1]}</span>`; }
+            return `<label class="checklist-item ${t.done ? 'done' : ''}" style="margin-bottom:6px;"><input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleKanbanTask('${p.id}', ${idx}); openProjectDetailsModal('${p.id}');"><span>${taskText} ${assignHtml}</span></label>`;
+        }).join(''); 
+    }
 
     body.innerHTML = `
         <div class="project-detail-section">
@@ -1189,7 +971,7 @@ function renderHistory() {
     let totalBudget = 0, totalCA = 0, html = '';
     archivedProjects.sort((a, b) => new Date(b.end || 0) - new Date(a.end || 0)).forEach(p => {
         const budget = (parseFloat(p.budgetAds) || 0) + (parseFloat(p.budgetProd) || 0); let ca = 0;
-        state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { ca += parseFloat(r[4]) || 0; } });
+        state.comptaRawRows.forEach(r => { if (r[11] !== "ANNULE" && r[11] !== "AVOIR" && r[11] !== "ECHANGE" && String(r[9]).includes(`[ProjetID:${p.id}]`)) { ca += parseFloat(r[4]) || 0; } });
         const roi = ca - budget; totalBudget += budget; totalCA += ca;
         html += `<tr><td><strong>${p.name}</strong></td><td>${p.end}</td><td><span class="product-category">${(p.channels || []).join(', ')}</span></td><td class="text-right">${budget.toFixed(2)} €</td><td class="text-right font-bold">${ca.toFixed(2)} €</td><td class="text-right" style="color:${roi >= 0 ? 'var(--success)' : 'var(--danger)'}; font-weight:bold;">${roi >= 0 ? '+' : ''}${roi.toFixed(2)} €</td><td class="text-center"><button class="btn-table-action" style="background-color: var(--info); color:white;" onclick="openProjectDetailsModal('${p.id}')" title="Voir bilan complet"><i class="fas fa-eye"></i></button><button class="btn-table-action btn-table-cancel" onclick="deleteProjectSheet('${p.id}')" title="Supprimer définitivement"><i class="fas fa-trash"></i></button></td></tr>`;
     });
@@ -1298,6 +1080,26 @@ async function preloadAllDataInBackground() {
         await ensureClientsSheetExists(); const clientsRaw = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${CLIENTS_SHEET_NAME}!A:E`); state.clients = (clientsRaw && clientsRaw.length >= 2) ? clientsRaw.slice(1).map((r, i) => ({ id: r[0], name: r[1], contact: r[2], mensurations: r[3], notes: r[4], rowIndex: i+2 })) : [];
         await ensurePrestationsSheetExists(); const prestRaw = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${PRESTATIONS_SHEET_NAME}!A:L`); state.prestations = (prestRaw && prestRaw.length >= 2) ? prestRaw.slice(1).map((r, i) => ({ id: r[0], clientId: r[1], date: r[2], demande: r[3], status: r[4]||'À traiter', prix: r[5], avancement: r[6], paiement: r[7]||'Non payé', typePrest: r[8]||'Standard', photoPiece: r[9]||'', modifications: r[10]||'', mesures: r[11]||'', rowIndex: i+2 })) : [];
         await ensureAgendaSheetExists(); const agendaRaw = await googleApiManager.getSheetData(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A:F`); state.agenda = (agendaRaw && agendaRaw.length >= 2) ? agendaRaw.slice(1).map((r, i) => ({ id: r[0], title: r[1], start: r[2], end: r[3], type: r[4], desc: r[5], rowIndex: i+2 })) : [];
+        
+        // Charger tous les stocks pour la vue Dépôt En Boutique
+        const allSheets = state.spreadsheetDetails.sheets.filter(s => ![COMPTA_SHEET_NAME, PROJECTS_SHEET_NAME, EXPENSES_SHEET_NAME, CLIENTS_SHEET_NAME, PRESTATIONS_SHEET_NAME, AGENDA_SHEET_NAME].includes(s.properties.title));
+        const ranges = allSheets.map(s => `'${s.properties.title.replace(/'/g, "''")}'!A:Z`);
+        const stockData = await googleApiManager.getBatchSheetData(state.currentSpreadsheetId, ranges);
+        state.allStock = [];
+        if(stockData) {
+            stockData.forEach((res, index) => {
+                if(res.values && res.values.length > 1) {
+                    const headers = res.values[0];
+                    const rows = res.values.slice(1);
+                    rows.forEach((r, idx) => {
+                        let obj = { sheetTitle: allSheets[index].properties.title, gSheetRowIndex: idx + 2 };
+                        headers.forEach((h, i) => { obj[h] = r[i]; });
+                        state.allStock.push(obj);
+                    });
+                }
+            });
+        }
+        
         console.log("Synchronisation globale en arrière-plan réussie."); checkProjectDeadlines();
     } catch (err) { console.error("Erreur lors de la synchronisation globale en arrière-plan :", err); }
 }
@@ -1385,8 +1187,24 @@ async function handleFormSheetChange(e) {
 
 async function handleMainFormSubmit(e) {
     e.preventDefault(); const sheetTitle = document.getElementById('form-sheet-select')?.value; const submitBtn = document.getElementById('form-submit-btn'); if (!sheetTitle || state.formHeaders.length === 0) return;
-    const values = state.formHeaders.map((h, i) => document.getElementById(`main-field-${i}`).value); if(submitBtn) submitBtn.disabled = true; const success = await googleApiManager.appendRow(state.currentSpreadsheetId, `${sheetTitle}!A:A`, values);
-    if (success) { showNotification("Article enregistré !", "success"); state.formHeaders.forEach((h, i) => { const el = document.getElementById(`main-field-${i}`); if(el) el.value = ''; }); } if(submitBtn) submitBtn.disabled = false;
+    const values = state.formHeaders.map((h, i) => document.getElementById(`main-field-${i}`).value);
+    
+    // Ajout des informations Dépôt-Vente s'il y a lieu
+    const isDepot = document.getElementById('is-depot-vente')?.value === 'Oui';
+    const depositaire = document.getElementById('nom-depositaire')?.value || '';
+    const depotIdx = state.formHeaders.findIndex(h => h.toLowerCase().includes('dépôt') || h.toLowerCase().includes('depot'));
+    const depositaireIdx = state.formHeaders.findIndex(h => h.toLowerCase().includes('dépositaire') || h.toLowerCase().includes('depositaire'));
+    if (isDepot) {
+        if (depotIdx >= 0) values[depotIdx] = 'Oui';
+        if (depositaireIdx >= 0) values[depositaireIdx] = depositaire;
+        else if (depotIdx < 0 && depositaireIdx < 0) {
+            const nameIdx = state.formHeaders.findIndex(h => h.toLowerCase().includes('nom'));
+            if (nameIdx >= 0) values[nameIdx] += ` [Dépôt - ${depositaire}]`;
+        }
+    }
+
+    if(submitBtn) submitBtn.disabled = true; const success = await googleApiManager.appendRow(state.currentSpreadsheetId, `${sheetTitle}!A:A`, values);
+    if (success) { showNotification("Article enregistré !", "success"); state.formHeaders.forEach((h, i) => { const el = document.getElementById(`main-field-${i}`); if(el) el.value = ''; }); if(document.getElementById('nom-depositaire')) document.getElementById('nom-depositaire').value = ''; } if(submitBtn) submitBtn.disabled = false;
 }
 
 async function handleAddSheet(e) {

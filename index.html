@@ -138,6 +138,21 @@
                         <div id="form-dynamic-container" class="dynamic-fields-grid">
                             <p style="color:var(--gray); grid-column: 1/-1; text-align:center;">Veuillez sélectionner un dossier ci-dessus pour afficher les champs.</p>
                         </div>
+                        
+                        <div id="depot-vente-fields" class="dynamic-fields-grid" style="border-top:1px solid var(--border-color); padding-top:15px; margin-top:15px;">
+                            <div class="form-group">
+                                <label for="is-depot-vente">Est-ce un Dépôt-Vente ?</label>
+                                <select id="is-depot-vente">
+                                    <option value="Non">Non, stock boutique</option>
+                                    <option value="Oui">Oui, Dépôt-Vente</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="depositaire-group" style="display:none;">
+                                <label for="nom-depositaire">Nom du dépositaire</label>
+                                <input type="text" id="nom-depositaire" placeholder="Ex: Alice">
+                            </div>
+                        </div>
+
                         <div class="form-actions" style="margin-top:20px;">
                             <button type="submit" class="btn btn-finish" id="form-submit-btn" disabled>
                                 <i class="fas fa-save"></i> Enregistrer l'article
@@ -273,7 +288,7 @@
                         <select id="filter-compta-status" class="filter-select">
                             <option value="">Tous les statuts</option>
                             <option value="VALID">Ventes Effectives</option>
-                            <option value="ANNULE">Ventes Annulées / Avoirs</option>
+                            <option value="ANNULE">Annulés / Avoirs / Retours</option>
                         </select>
                     </div>
                 </div>
@@ -305,7 +320,6 @@
                 </div>
             </section>
 
-         
             <section class="tab-content" id="expenses">
                 <div class="stats-header">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
@@ -338,7 +352,6 @@
                     </div>
                 </div>
 
-                <!-- Bilan Rentabilité & Marge Réelle -->
                 <div class="kpi-container" id="margin-kpis">
                     <p style="text-align:center; width:100%;">Calcul de la rentabilité...</p>
                 </div>
@@ -369,29 +382,56 @@
             <section class="tab-content" id="depots">
                 <div class="stats-header">
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                        <h2 class="section-title"><i class="fas fa-handshake"></i> Bilan des Reversements Dépôt-Vente</h2>
+                        <h2 class="section-title"><i class="fas fa-handshake"></i> Gestion & Bilan des Dépôts-Vente</h2>
+                    </div>
+                    
+                    <div class="project-view-switcher" style="margin-top:15px; width: fit-content;">
+                        <button type="button" class="btn-switch active" id="view-depot-boutique-btn"><i class="fas fa-store"></i> Stock en Boutique</button>
+                        <button type="button" class="btn-switch" id="view-depot-vendu-btn"><i class="fas fa-check"></i> Articles Vendus</button>
                     </div>
                 </div>
 
-                <div class="kpi-container" id="depot-kpis"></div>
+                <!-- STOCK EN BOUTIQUE -->
+                <div id="depot-boutique-view">
+                    <div class="stats-table-container">
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Dossier / Rayon</th>
+                                    <th>Article</th>
+                                    <th>Nom du Dépositaire</th>
+                                    <th>Prix de Vente</th>
+                                    <th class="text-center">Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody id="depot-boutique-body">
+                                <tr><td colspan="5" style="text-align:center;">Chargement du stock boutique...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-                <div class="stats-table-container">
-                    <table class="stats-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Article (Réf)</th>
-                                <th>Dépositaire</th>
-                                <th class="text-right">Vendu TTC</th>
-                                <th class="text-right">Dû Dépositaire</th>
-                                <th class="text-center">Statut Reversement</th>
-                                <th class="text-center">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody id="depots-table-body">
-                            <tr><td colspan="7" style="text-align:center;">Aucune vente en dépôt enregistrée.</td></tr>
-                        </tbody>
-                    </table>
+                <!-- ARTICLES VENDUS (Ancien Bilan) -->
+                <div id="depot-vendu-view" class="hidden">
+                    <div class="kpi-container" id="depot-kpis"></div>
+                    <div class="stats-table-container">
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Date Vente</th>
+                                    <th>Article (Réf)</th>
+                                    <th>Dépositaire</th>
+                                    <th class="text-right">Vendu TTC</th>
+                                    <th class="text-right">Dû Dépositaire</th>
+                                    <th class="text-center">Statut Reversement</th>
+                                    <th class="text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="depots-table-body">
+                                <tr><td colspan="7" style="text-align:center;">Aucune vente en dépôt enregistrée.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
@@ -597,7 +637,6 @@
                         </select>
                     </div>
                     
-                    <!-- NOUVEAU BLOC : Type de Prestation -->
                     <div class="form-group">
                         <label for="prest-type">Type de Prestation</label>
                         <select id="prest-type">
@@ -607,7 +646,6 @@
                         </select>
                     </div>
 
-                    <!-- NOUVEAU BLOC : Détails Personnalisation/Retouche -->
                     <div id="prest-custom-fields" class="dynamic-fields-grid hidden" style="background:var(--light); padding:15px; border-radius:8px; margin-bottom:15px; border:1px dashed var(--border-color);">
                         <div class="form-group" style="grid-column:1/-1;">
                             <label for="prest-photo"><i class="fas fa-image"></i> Pièce de départ (Lien Drive / URL photo)</label>
@@ -643,7 +681,6 @@
                         <input type="text" id="prest-prix" inputmode="decimal" placeholder="0.00">
                     </div>
                     
-                    <!-- BLOC PAIEMENT -->
                     <div class="form-group">
                         <label for="prest-paiement">Statut du Paiement</label>
                         <select id="prest-paiement">
@@ -893,6 +930,46 @@
             </div>
         </div>
     </div>
+    
+    <!-- MODAL ANNULATION / RETOUR / AVOIR / ECHANGE -->
+    <div class="modal" id="cancel-sale-modal">
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h3><i class="fas fa-undo"></i> Gérer une Vente (Annulation, Retour, Avoir...)</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="cancel-sale-form">
+                    <input type="hidden" id="cancel-row-idx">
+                    <div class="form-group">
+                        <label for="cancel-type">Type d'opération *</label>
+                        <select id="cancel-type" required>
+                            <option value="suppression">Suppression (Erreur de saisie, effacer de la compta)</option>
+                            <option value="retour">Retour (Remboursement et remise en stock)</option>
+                            <option value="avoir">Création d'un Avoir (Remise en stock)</option>
+                            <option value="echange">Échange (Remise en stock & Entrée d'un nouveau produit)</option>
+                        </select>
+                    </div>
+                    
+                    <div id="exchange-fields" class="dynamic-fields-grid hidden" style="background:var(--light); padding:15px; border-radius:8px; margin-top:15px; border:1px dashed var(--border-color);">
+                        <p style="grid-column: 1/-1; margin:0; font-weight:bold; color:var(--secondary);"><i class="fas fa-box-open"></i> Informations du nouveau produit d'échange :</p>
+                        <div class="form-group"><label>Nouveau Produit - Nom *</label><input type="text" id="exch-name"></div>
+                        <div class="form-group"><label>Nouveau Produit - Réf</label><input type="text" id="exch-ref"></div>
+                        <div class="form-group"><label>Nouveau Produit - Prix TTC (€) *</label><input type="text" id="exch-price" inputmode="decimal"></div>
+                        <div class="form-group">
+                            <label>Dossier de destination du stock *</label>
+                            <select id="exch-sheet"></select>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer" style="margin-top:20px;">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish" style="background-color: var(--danger);">Confirmer l'opération</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <!-- MODAL PROJET -->
     <div class="modal" id="project-modal">
@@ -965,10 +1042,11 @@
                         <label class="channel-tag-option"><input type="checkbox" name="proj-channels" value="Boutique"> <i class="fas fa-store"></i> Vitrine & In-store</label>
                     </div>
 
-                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-tasks"></i> Checklist de Production</h4>
+                    <h4 style="margin: 20px 0 10px; color:var(--secondary);"><i class="fas fa-tasks"></i> Checklist & Assignations</h4>
                     <div id="checklist-builder-container" class="checklist-builder"></div>
                     <div style="display:flex; gap:10px; margin-top:8px;">
-                        <input type="text" id="new-task-input" placeholder="Ajouter une étape (ex: Rédiger script, Sélectionner pièces)...">
+                        <input type="text" id="new-task-input" placeholder="Ajouter une étape (ex: Rédiger script)..." style="flex:2;">
+                        <input type="text" id="new-task-assignee" placeholder="Assigné à..." style="flex:1;">
                         <button type="button" class="btn btn-secondary" id="add-task-item-btn" style="padding:0 15px;"><i class="fas fa-plus"></i></button>
                     </div>
 
@@ -1044,7 +1122,7 @@
                     </div>
                     <div class="form-group" id="custom-headers-group">
                         <label for="custom-headers">Champs (séparés par des virgules) *</label>
-                        <textarea id="custom-headers" rows="2" required>Nom, Référence, Catégorie, Prix, État, Image</textarea>
+                        <textarea id="custom-headers" rows="2" required>Nom, Référence, Catégorie, Prix, État, Image, Dépôt, Dépositaire</textarea>
                         <p style="font-size: 0.8rem; color: var(--gray); margin-top: 5px;">Saisissez les colonnes souhaitées, séparées par une virgule.</p>
                     </div>
                     <div class="modal-footer">
