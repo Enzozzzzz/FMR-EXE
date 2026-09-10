@@ -9,9 +9,10 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" type="image/x-icon" href="Logo-FMR.png">
     
-    <!-- Librairies jsPDF & Chart.js -->
+    <!-- Librairies jsPDF, Chart.js & FullCalendar pour l'Agenda -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
     <script src="script.js" defer></script>
 </head>
 <body>
@@ -27,6 +28,8 @@
                     <ul>
                         <li><a href="#" class="active" data-tab="stock"><i class="fas fa-boxes"></i> Inventaire</a></li>
                         <li><a href="#" data-tab="form"><i class="fas fa-plus-circle"></i> Ajout Produit</a></li>
+                        <li><a href="#" data-tab="clients"><i class="fas fa-users"></i> Clients & Prestations</a></li>
+                        <li><a href="#" data-tab="agenda"><i class="fas fa-calendar-alt"></i> Agenda</a></li>
                         <li><a href="#" data-tab="compta"><i class="fas fa-cash-register"></i> Comptabilité</a></li>
                         <li><a href="#" data-tab="expenses"><i class="fas fa-receipt"></i> Dépenses & Marge</a></li>
                         <li><a href="#" data-tab="depots"><i class="fas fa-handshake"></i> Dépôts-Vente</a></li>
@@ -141,6 +144,88 @@
                             </button>
                         </div>
                     </form>
+                </div>
+            </section>
+
+            <!-- SECTION CLIENTS ET PRESTATIONS -->
+            <section class="tab-content" id="clients">
+                <div class="stats-header">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 class="section-title"><i class="fas fa-users"></i> Base Clients & Prestations</h2>
+                            <p style="color:var(--gray); font-size:0.9rem; margin-top:3px;">Gérez vos clients, leurs mensurations et l'avancement de leurs demandes.</p>
+                        </div>
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <div class="project-view-switcher">
+                                <button type="button" class="btn-switch active" id="view-clients-list-btn"><i class="fas fa-address-book"></i> Répertoire</button>
+                                <button type="button" class="btn-switch" id="view-prestations-kanban-btn"><i class="fas fa-tasks"></i> Demandes en cours</button>
+                            </div>
+                            <button id="add-client-btn" class="btn btn-secondary" style="width:auto; margin:0;">
+                                <i class="fas fa-user-plus"></i> + Client
+                            </button>
+                            <button id="add-prestation-btn" class="btn btn-finish" style="width:auto; margin:0;">
+                                <i class="fas fa-plus-circle"></i> + Prestation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vue Liste Clients -->
+                <div id="clients-list-view" class="projects-timeline-view">
+                    <div class="stats-table-container">
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Nom du Client</th>
+                                    <th>Contact (Email / Tél)</th>
+                                    <th>Mensurations & Tailles</th>
+                                    <th>Notes additionnelles</th>
+                                    <th class="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="clients-table-body">
+                                <tr><td colspan="5" style="text-align:center;">Aucun client enregistré.</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Vue Kanban Prestations -->
+                <div id="prestations-kanban-view" class="kanban-board hidden">
+                    <div class="kanban-column" data-status="À traiter" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handlePrestDrop(event, 'À traiter')">
+                        <div class="kanban-column-header"><i class="fas fa-inbox"></i> À traiter (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-prest-atraiter"></div>
+                    </div>
+                    <div class="kanban-column" data-status="En cours" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handlePrestDrop(event, 'En cours')">
+                        <div class="kanban-column-header"><i class="fas fa-tools"></i> En cours / Recherche (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-prest-encours"></div>
+                    </div>
+                    <div class="kanban-column" data-status="Prêt" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handlePrestDrop(event, 'Prêt')">
+                        <div class="kanban-column-header"><i class="fas fa-check-circle"></i> Prêt / Attente Client (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-prest-pret"></div>
+                    </div>
+                    <div class="kanban-column" data-status="Terminé" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handlePrestDrop(event, 'Terminé')">
+                        <div class="kanban-column-header"><i class="fas fa-flag-checkered"></i> Terminé (<span class="col-count">0</span>)</div>
+                        <div class="kanban-cards" id="kanban-col-prest-termine"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION AGENDA -->
+            <section class="tab-content" id="agenda">
+                <div class="stats-header">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <h2 class="section-title"><i class="fas fa-calendar-alt"></i> Agenda Global</h2>
+                            <p style="color:var(--gray); font-size:0.9rem; margin-top:3px;">Visualisez vos deadlines de projets, prestations et événements personnalisés.</p>
+                        </div>
+                        <button id="add-agenda-btn" class="btn btn-finish" style="width:auto; margin:0;">
+                            <i class="fas fa-plus-circle"></i> + Événement
+                        </button>
+                    </div>
+                </div>
+                <div id="calendar-wrapper" style="background: var(--white); padding: 20px; border-radius: 12px; box-shadow: var(--shadow); border: 1px solid var(--border-color);">
+                    <div id="calendar"></div>
                 </div>
             </section>
 
@@ -407,6 +492,185 @@
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- MODAL AGENDA -->
+    <div class="modal" id="agenda-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-calendar-plus"></i> Événement Agenda</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="agenda-form">
+                    <input type="hidden" id="agenda-edit-id">
+                    <div class="form-group">
+                        <label for="agenda-title">Titre de l'événement *</label>
+                        <input type="text" id="agenda-title" required placeholder="Ex: Réunion fournisseur">
+                    </div>
+                    <div class="dynamic-fields-grid">
+                        <div class="form-group">
+                            <label for="agenda-start">Date (Début) *</label>
+                            <input type="date" id="agenda-start" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="agenda-end">Date (Fin / Optionnel)</label>
+                            <input type="date" id="agenda-end">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="agenda-type">Type d'événement</label>
+                        <select id="agenda-type">
+                            <option value="Tâche">Tâche</option>
+                            <option value="Rappel">Rappel / Urgent</option>
+                            <option value="Autre">Autre</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="agenda-desc">Description</label>
+                        <textarea id="agenda-desc" rows="2" placeholder="Détails supplémentaires..."></textarea>
+                    </div>
+                    <div class="modal-footer" style="justify-content: space-between;">
+                        <div id="agenda-delete-btn-container" style="display:none;">
+                            <button type="button" class="btn" style="background-color: var(--danger);" onclick="deleteAgendaEvent()"><i class="fas fa-trash"></i> Supprimer</button>
+                        </div>
+                        <div style="display: flex; gap: 15px;">
+                            <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                            <button type="submit" class="btn btn-finish">Enregistrer</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL CLIENT -->
+    <div class="modal" id="client-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-user"></i> Profil Client</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="client-form">
+                    <input type="hidden" id="client-edit-id">
+                    <div class="form-group">
+                        <label for="client-name">Nom du Client *</label>
+                        <input type="text" id="client-name" required placeholder="Ex: Jean Dupont">
+                    </div>
+                    <div class="form-group">
+                        <label for="client-contact">Contact (Email ou Téléphone)</label>
+                        <input type="text" id="client-contact" placeholder="Email / Tél">
+                    </div>
+                    <div class="form-group">
+                        <label for="client-mensurations">Mensurations & Tailles</label>
+                        <textarea id="client-mensurations" rows="3" placeholder="Haut: M, Bas: 40, Tour de poitrine: 90cm..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="client-notes">Notes / Préférences</label>
+                        <textarea id="client-notes" rows="2" placeholder="Préfère les coupes oversize, aime le vintage années 90..."></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Enregistrer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL PRESTATION -->
+    <div class="modal" id="prestation-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-clipboard-list"></i> Nouvelle Demande / Prestation</h3>
+                <button class="close" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="prestation-form">
+                    <input type="hidden" id="prest-edit-id">
+                    
+                    <div class="form-group">
+                        <label for="prest-client">Client *</label>
+                        <select id="prest-client" required>
+                            <!-- Rempli dynamiquement -->
+                        </select>
+                    </div>
+                    
+                    <!-- NOUVEAU BLOC : Type de Prestation -->
+                    <div class="form-group">
+                        <label for="prest-type">Type de Prestation</label>
+                        <select id="prest-type">
+                            <option value="Standard">Standard (Recherche de pièce, Autre)</option>
+                            <option value="Personnalisation">Personnalisation / Customisation</option>
+                            <option value="Retouche">Retouche couture</option>
+                        </select>
+                    </div>
+
+                    <!-- NOUVEAU BLOC : Détails Personnalisation/Retouche -->
+                    <div id="prest-custom-fields" class="dynamic-fields-grid hidden" style="background:var(--light); padding:15px; border-radius:8px; margin-bottom:15px; border:1px dashed var(--border-color);">
+                        <div class="form-group" style="grid-column:1/-1;">
+                            <label for="prest-photo"><i class="fas fa-image"></i> Pièce de départ (Lien Drive / URL photo)</label>
+                            <input type="url" id="prest-photo" placeholder="https://drive.google.com/...">
+                        </div>
+                        <div class="form-group">
+                            <label for="prest-modifications"><i class="fas fa-cut"></i> Modifications à réaliser</label>
+                            <textarea id="prest-modifications" rows="2" placeholder="Ex: Raccourcir les manches, broder le logo..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="prest-mesures"><i class="fas fa-ruler"></i> Mesures spécifiques</label>
+                            <textarea id="prest-mesures" rows="2" placeholder="Ex: Longueur 102cm, taille 42..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="prest-demande">Description générale / Demande *</label>
+                        <textarea id="prest-demande" rows="2" required placeholder="Ex: Recherche veste en cuir noir taille L, Upcycling pantalon cargo..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="prest-status">Statut de la tâche</label>
+                        <select id="prest-status">
+                            <option value="À traiter">À traiter</option>
+                            <option value="En cours">En cours / Recherche</option>
+                            <option value="Prêt">Prêt / En attente client</option>
+                            <option value="Terminé">Terminé</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="prest-prix">Prix Estimé / Budgété / Final (€)</label>
+                        <input type="text" id="prest-prix" inputmode="decimal" placeholder="0.00">
+                    </div>
+                    
+                    <!-- BLOC PAIEMENT -->
+                    <div class="form-group">
+                        <label for="prest-paiement">Statut du Paiement</label>
+                        <select id="prest-paiement">
+                            <option value="Non payé">Non payé</option>
+                            <option value="Payé">Payé (Ajoute la somme en comptabilité)</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="prest-payment-method-group" style="display:none; border:1px dashed var(--border-color); padding:10px; border-radius:8px; background:var(--light);">
+                        <label for="prest-payment-method">Mode de règlement *</label>
+                        <select id="prest-payment-method">
+                            <option value="Carte">Carte Bancaire / Stripe</option>
+                            <option value="Espèces">Espèces</option>
+                            <option value="Virement">Virement</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-top:15px;">
+                        <label for="prest-avancement">Détails d'avancement</label>
+                        <textarea id="prest-avancement" rows="2" placeholder="Fournisseur contacté, pièce trouvée chez X..."></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary close-modal-btn">Annuler</button>
+                        <button type="submit" class="btn btn-finish">Enregistrer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 
     <!-- MODAL AJOUT DÉPENSE / CHARGE -->
@@ -788,8 +1052,8 @@
                         <button type="submit" class="btn btn-finish">Créer le dossier</button>
                     </div>
                 </form>
+            </div>
         </div>
-    </div>
     </div>
     <div class="modal" id="rename-modal">
         <div class="modal-content">

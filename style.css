@@ -11,6 +11,15 @@
     --border-color: #FFC182;
     --shadow: 0 4px 6px -1px rgba(88, 45, 29, 0.1), 0 2px 4px -2px rgba(88, 45, 29, 0.1);
     --shadow-lg: 0 10px 15px -3px rgba(88, 45, 29, 0.1), 0 4px 6px -4px rgba(88, 45, 29, 0.1);
+    
+    /* FullCalendar Colors */
+    --fc-button-bg-color: var(--primary);
+    --fc-button-border-color: var(--primary);
+    --fc-button-hover-bg-color: var(--secondary);
+    --fc-button-hover-border-color: var(--secondary);
+    --fc-button-active-bg-color: var(--secondary);
+    --fc-button-active-border-color: var(--secondary);
+    --fc-today-bg-color: rgba(247, 107, 21, 0.05);
 }
 
 body[data-theme="dark"] {
@@ -1101,4 +1110,68 @@ body[data-theme="dark"] .channel-tag-option i.fa-tiktok { color: #FFFFFF !import
 .projects-history-view {
     margin-top: 20px;
     animation: fadeIn 0.4s ease-in-out;
+}
+
+/* -------------------------------------
+   CORRECTIF FULLCALENDAR
+-------------------------------------- */
+.fc-event {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    border: none !important;
+}
+
+.fc .fc-toolbar-title {
+    color: var(--secondary);
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.fc .fc-button-primary {
+    background-color: var(--primary) !important;
+    border-color: var(--primary) !important;
+}
+
+.fc .fc-button-primary:hover {
+    background-color: var(--secondary) !important;
+    border-color: var(--secondary) !important;
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active, 
+.fc .fc-button-primary:not(:disabled):active {
+    background-color: var(--secondary) !important;
+    border-color: var(--secondary) !important;
+}
+
+.fc-day-today {
+    background-color: rgba(247, 107, 21, 0.05) !important;
+}
+
+/* -------------------------------------
+   CORRECTIF ELECTRON (SAISIE TEXTE)
+-------------------------------------- */
+input, 
+textarea, 
+select, 
+input[type="text"], 
+input[type="number"], 
+input[type="date"], 
+input[type="url"], 
+input[type="email"] {
+    -webkit-app-region: no-drag !important;
+    -webkit-user-select: auto !important;
+    user-select: auto !important;
+    pointer-events: auto !important;
+    cursor: text !important;
+}
+
+#notification-container {
+    pointer-events: none !important;
+}
+
+.notification {
+    pointer-events: auto !important;
 }
