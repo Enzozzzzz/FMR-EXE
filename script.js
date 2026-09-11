@@ -418,14 +418,57 @@ async function ensureAgendaSheetExists() {
 
 function setupAgendaEvents() {
     const addAgendaBtn = document.getElementById('add-agenda-btn');
-    if (addAgendaBtn) { addAgendaBtn.addEventListener('click', () => { document.getElementById('agenda-edit-id').value = ''; document.getElementById('agenda-form').reset(); document.getElementById('agenda-delete-btn-container').style.display = 'none'; const modal = document.getElementById('agenda-modal'); if(modal) modal.style.display = 'block'; }); }
+    if (addAgendaBtn) { 
+        addAgendaBtn.addEventListener('click', () => { 
+            document.getElementById('agenda-edit-id').value = ''; 
+            document.getElementById('agenda-form').reset(); 
+            document.getElementById('agenda-delete-btn-container').style.display = 'none'; 
+            const modal = document.getElementById('agenda-modal'); 
+            if(modal) modal.style.display = 'block'; 
+        }); 
+    }
+    
     const agendaForm = document.getElementById('agenda-form');
     if (agendaForm) {
         agendaForm.addEventListener('submit', async (e) => {
-            e.preventDefault(); const editId = document.getElementById('agenda-edit-id')?.value; const agObj = [ editId || Date.now().toString(), document.getElementById('agenda-title')?.value || '', document.getElementById('agenda-start')?.value || '', document.getElementById('agenda-end')?.value || '', document.getElementById('agenda-type')?.value || 'Autre', document.getElementById('agenda-desc')?.value || '' ];
+            e.preventDefault(); 
+            const editId = document.getElementById('agenda-edit-id')?.value; 
+            
+            // Formatage de la date et de l'heure de DÉBUT
+            const rawStart = document.getElementById('agenda-start')?.value || '';
+            const timeStart = document.getElementById('agenda-time-start')?.value || '';
+            const finalStart = timeStart ? `${rawStart}T${timeStart}` : rawStart;
+
+            // Formatage de la date et de l'heure de FIN
+            let rawEnd = document.getElementById('agenda-end')?.value || '';
+            const timeEnd = document.getElementById('agenda-time-end')?.value || '';
+            
+            // Si on a une heure de fin mais aucune date de fin, on assume que c'est le même jour
+            if (timeEnd && !rawEnd) {
+                rawEnd = rawStart; 
+            }
+            const finalEnd = rawEnd ? (timeEnd ? `${rawEnd}T${timeEnd}` : rawEnd) : '';
+
+            const agObj = [ 
+                editId || Date.now().toString(), 
+                document.getElementById('agenda-title')?.value || '', 
+                finalStart, 
+                finalEnd, 
+                document.getElementById('agenda-type')?.value || 'Autre', 
+                document.getElementById('agenda-desc')?.value || '' 
+            ];
+            
             await ensureAgendaSheetExists();
-            if (editId) { const existing = state.agenda.find(a => a.id === editId); if (existing) await googleApiManager.updateRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A${existing.rowIndex}:F${existing.rowIndex}`, agObj); } else { await googleApiManager.appendRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A:F`, agObj); }
-            document.getElementById('agenda-modal').style.display = 'none'; showNotification("Événement enregistré !", "success"); await preloadAllDataInBackground(); initCalendar();
+            if (editId) { 
+                const existing = state.agenda.find(a => a.id === editId); 
+                if (existing) await googleApiManager.updateRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A${existing.rowIndex}:F${existing.rowIndex}`, agObj); 
+            } else { 
+                await googleApiManager.appendRow(state.currentSpreadsheetId, `${AGENDA_SHEET_NAME}!A:F`, agObj); 
+            }
+            document.getElementById('agenda-modal').style.display = 'none'; 
+            showNotification("Événement enregistré !", "success"); 
+            await preloadAllDataInBackground(); 
+            initCalendar();
         });
     }
 }
@@ -442,11 +485,12 @@ function initCalendar() {
     const calendarEl = document.getElementById('calendar'); 
     if (!calendarEl || !window.FullCalendar) return; 
     
-    try { if (calendarInstance) calendarInstance.destroy(); } catch(e) {}
+    try {
+        if (calendarInstance) calendarInstance.destroy(); 
+    } catch(e) {}
     
     const events = [];
 
-    // Fonction pour ajouter 1 jour (FullCalendar exclut le dernier jour pour les événements allDay)
     const getExclusiveEndStr = (dateObj) => {
         if (!dateObj) return null;
         const dt = new Date(dateObj);
@@ -459,24 +503,13 @@ function initCalendar() {
         if (p.status !== 'Publié' && p.end) { 
             const startDt = parseFMRDate(p.start);
             const endDt = parseFMRDate(p.end);
-            
             const startIso = formatDateForFC(startDt) || formatDateForFC(endDt);
             let endIso = formatDateForFC(endDt);
-            
             if (startIso && endIso && startIso !== endIso) {
                 endIso = getExclusiveEndStr(endDt);
             }
-            
             if (startIso) {
-                events.push({ 
-                    id: 'proj_' + p.id, 
-                    title: '📌 [Projet] ' + p.name, 
-                    start: startIso, 
-                    end: (endIso && endIso !== startIso) ? endIso : undefined,
-                    allDay: true, 
-                    backgroundColor: 'var(--primary)', 
-                    borderColor: 'var(--primary)' 
-                }); 
+                events.push({ id: 'proj_' + p.id, title: '📌 [Projet] ' + p.name, start: startIso, end: (endIso && endIso !== startIso) ? endIso : undefined, allDay: true, backgroundColor: 'var(--primary)', borderColor: 'var(--primary)' }); 
             }
         } 
     });
@@ -494,18 +527,32 @@ function initCalendar() {
         } 
     });
 
-    // Chargement dynamique des Événements personnalisés
+    // Chargement dynamique des Événements personnalisés avec prise en compte de l'heure
     state.agenda.forEach(a => { 
         let color = 'var(--success)'; if (a.type === 'Rappel') color = 'var(--danger)'; if (a.type === 'Tâche') color = 'var(--gray)'; 
         
-        const startDt = parseFMRDate(a.start);
-        const endDt = parseFMRDate(a.end);
-        
-        const startIso = formatDateForFC(startDt);
-        let endIso = formatDateForFC(endDt);
-        
-        if (startIso && endIso && startIso !== endIso) {
-            endIso = getExclusiveEndStr(endDt);
+        let startIso = a.start;
+        let isAllDay = true;
+
+        // Vérification de la présence d'une heure dans la date de début
+        if (startIso && (startIso.includes('T') || startIso.includes(' '))) {
+            startIso = startIso.replace(' ', 'T');
+            if (startIso.match(/T\d{2}:\d{2}/)) {
+                isAllDay = false; // L'événement a une heure spécifique, il n'est donc pas "AllDay"
+            }
+        } else {
+            startIso = formatDateForFC(parseFMRDate(a.start));
+        }
+
+        let endIso = a.end;
+        if (endIso && (endIso.includes('T') || endIso.includes(' '))) {
+            endIso = endIso.replace(' ', 'T');
+        } else {
+            endIso = formatDateForFC(parseFMRDate(a.end));
+            // Ajout d'un jour uniquement si c'est un événement "Toute la journée" sur plusieurs jours
+            if (startIso && endIso && startIso !== endIso && isAllDay) {
+                endIso = getExclusiveEndStr(a.end);
+            }
         }
 
         if (startIso) {
@@ -514,7 +561,7 @@ function initCalendar() {
                 title: a.title, 
                 start: startIso, 
                 end: (endIso && endIso !== startIso) ? endIso : undefined, 
-                allDay: true, 
+                allDay: isAllDay, 
                 backgroundColor: color, 
                 borderColor: color 
             }); 
@@ -532,7 +579,20 @@ function initCalendar() {
             document.getElementById('agenda-edit-id').value = ''; 
             document.getElementById('agenda-form').reset(); 
             document.getElementById('agenda-delete-btn-container').style.display = 'none'; 
-            document.getElementById('agenda-start').value = info.dateStr; 
+            
+            // Pré-remplit la date et l'heure sélectionnées sur le calendrier
+            let dStr = info.dateStr;
+            let tStr = '';
+            if (dStr.includes('T')) {
+                const pts = dStr.split('T');
+                dStr = pts[0];
+                tStr = pts[1].substring(0, 5);
+            }
+            document.getElementById('agenda-start').value = dStr; 
+            document.getElementById('agenda-time-start').value = tStr;
+            document.getElementById('agenda-end').value = '';
+            document.getElementById('agenda-time-end').value = '';
+            
             const modal = document.getElementById('agenda-modal'); if(modal) modal.style.display = 'block'; 
         }, 
         eventClick: function(info) { 
@@ -547,8 +607,48 @@ function initCalendar() {
                 if (ag) { 
                     document.getElementById('agenda-edit-id').value = ag.id; 
                     document.getElementById('agenda-title').value = ag.title; 
-                    document.getElementById('agenda-start').value = ag.start; 
-                    document.getElementById('agenda-end').value = ag.end || ''; 
+                    
+                    // Séparation de la date et de l'heure de DÉBUT pour le formulaire
+                    let startVal = ag.start || '';
+                    let timeStartVal = '';
+                    if (startVal.includes('T')) {
+                        const parts = startVal.split('T');
+                        startVal = parts[0];
+                        timeStartVal = parts[1].substring(0, 5);
+                    } else if (startVal.includes(' ')) {
+                        const parts = startVal.split(' ');
+                        startVal = parts[0];
+                        timeStartVal = parts[1].substring(0, 5);
+                    }
+                    
+                    if (startVal.includes('/')) {
+                        const p = startVal.split('/');
+                        if(p.length === 3) startVal = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+                    }
+
+                    document.getElementById('agenda-start').value = startVal; 
+                    document.getElementById('agenda-time-start').value = timeStartVal;
+
+                    // Séparation de la date et de l'heure de FIN pour le formulaire
+                    let endVal = ag.end || '';
+                    let timeEndVal = '';
+                    if (endVal.includes('T')) {
+                        const parts = endVal.split('T');
+                        endVal = parts[0];
+                        timeEndVal = parts[1].substring(0, 5);
+                    } else if (endVal.includes(' ')) {
+                        const parts = endVal.split(' ');
+                        endVal = parts[0];
+                        timeEndVal = parts[1].substring(0, 5);
+                    }
+                    if (endVal.includes('/')) {
+                        const p = endVal.split('/');
+                        if(p.length === 3) endVal = `${p[2]}-${p[1].padStart(2,'0')}-${p[0].padStart(2,'0')}`;
+                    }
+                    
+                    document.getElementById('agenda-end').value = endVal; 
+                    document.getElementById('agenda-time-end').value = timeEndVal;
+
                     document.getElementById('agenda-type').value = ag.type || 'Autre'; 
                     document.getElementById('agenda-desc').value = ag.desc || ''; 
                     document.getElementById('agenda-delete-btn-container').style.display = 'block'; 
